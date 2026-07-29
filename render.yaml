@@ -5,7 +5,9 @@ services:
     region: singapore
     plan: free
     rootDir: server
-    buildCommand: npm ci && npm run build
+    # NODE_ENV=production makes npm skip devDependencies, but the build needs
+    # them (prisma CLI + tsc live there). --include=dev forces them in.
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: node dist/server.js
     healthCheckPath: /api/health
     envVars:
