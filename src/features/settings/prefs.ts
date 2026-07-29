@@ -1,25 +1,44 @@
 import { useCallback, useEffect, useState } from 'react'
 
 /**
- * Notification preferences — persisted to localStorage and shared between the
- * Settings page (which edits them) and the Notifications page (which reads them
- * to decide which alert streams to surface). Same-tab updates are broadcast via
- * a synthetic `storage` event so both pages stay in sync without a backend.
+ * Which alert streams the user wants to see. Persisted to localStorage and
+ * shared between Settings (which edits them) and Notifications (which turns
+ * them into a server-side `types` filter). Same-tab updates are broadcast via a
+ * synthetic `storage` event so both pages stay in sync.
  */
 export interface NotificationPrefs {
   lowStock: boolean
   draftChallans: boolean
   followUps: boolean
-  stockActivity: boolean
 }
 
-const KEY = 'fundsroom.prefs.v1'
+/** Alert types each preference controls, matching the server enum. */
+export const PREF_TYPES: Record<keyof NotificationPrefs, string[]> = {
+  lowStock: ['OUT_OF_STOCK', 'LOW_STOCK'],
+  draftChallans: ['DRAFT_STALE'],
+  followUps: ['FOLLOW_UP_DUE'],
+}
+
+/**
+ * Build the `types` query value. Returns undefined when everything is enabled
+ * so the common case sends no filter at all.
+ */
+export function typesFilter(prefs: NotificationPrefs): string | undefined {
+  const keys = Object.keys(PREF_TYPES) as (keyof NotificationPrefs)[]
+  if (keys.every((k) => prefs[k])) return undefined
+  const types = keys.filter((k) => prefs[k]).flatMap((k) => PREF_TYPES[k])
+  // Nothing enabled: send a sentinel so the server returns an empty page
+  // rather than silently falling back to "no filter".
+  return types.length ? types.join(',') : 'NONE'
+}
+
+// v2: the old shape had a `stockActivity` key that no longer maps to anything.
+const KEY = 'fundsroom.prefs.v2'
 
 const DEFAULTS: NotificationPrefs = {
   lowStock: true,
   draftChallans: true,
   followUps: true,
-  stockActivity: true,
 }
 
 export function readPrefs(): NotificationPrefs {

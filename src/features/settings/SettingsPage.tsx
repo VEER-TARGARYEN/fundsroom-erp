@@ -94,10 +94,9 @@ function SectionCard({
 }
 
 const PREF_META: { key: keyof NotificationPrefs; label: string; hint: string }[] = [
-  { key: 'lowStock', label: 'Low-stock alerts', hint: 'Notify when products fall to or below minimum stock.' },
-  { key: 'draftChallans', label: 'Draft challan reminders', hint: 'Notify about challans awaiting confirmation.' },
-  { key: 'followUps', label: 'Lead follow-ups', hint: 'Surface open leads that need attention.' },
-  { key: 'stockActivity', label: 'Stock movement activity', hint: 'Recent inventory movements in your feed.' },
+  { key: 'lowStock', label: 'Stock alerts', hint: 'Products at or below minimum, and stockouts.' },
+  { key: 'draftChallans', label: 'Unconfirmed challans', hint: 'Challans left in draft for more than 3 days.' },
+  { key: 'followUps', label: 'Customer follow-ups', hint: 'Follow-up dates that are due or overdue.' },
 ]
 
 export function SettingsPage() {
@@ -137,7 +136,7 @@ export function SettingsPage() {
         <SectionCard
           icon="tune"
           title="Notification preferences"
-          subtitle="Control which alert streams appear in Notifications."
+          subtitle="Which alert streams the agent surfaces to you."
         >
           <div className="divide-y divide-outline-variant/10">
             {PREF_META.map((m) => (

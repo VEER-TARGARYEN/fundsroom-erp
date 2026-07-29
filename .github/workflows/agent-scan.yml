@@ -1,0 +1,65 @@
+name: Operations agent scan
+
+# Render's cron jobs are a paid feature and the free web service sleeps after
+# 15 minutes idle, so an in-process timer would be unreliable. GitHub's
+# scheduler is free on private repos (2000 min/month) and a scan costs seconds.
+#
+# Two caveats worth knowing:
+#   • Scheduled runs can be delayed by several minutes under load — fine for a
+#     daily business digest, not for anything time-critical.
+#   • GitHub disables schedules after 60 days of repository inactivity.
+on:
+  schedule:
+    # 03:30 UTC = 09:00 IST, daily.
+    - cron: '30 3 * * *'
+    # Midday sweep so afternoon stockouts don't wait until tomorrow.
+    - cron: '30 7 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: agent-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wake the service
+        # The free instance spins down when idle; a cold boot can take ~50s,
+        # and the scan itself would otherwise time out on the first request.
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+              "${{ secrets.API_URL }}/api/health" || true)
+            echo "attempt $i → HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::warning::service did not report healthy; attempting scan anyway"
+
+      - name: Run agent scan
+        run: |
+          response=$(curl -sS --max-time 120 -w '\n%{http_code}' \
+            -X POST "${{ secrets.API_URL }}/api/agent/scan" \
+            -H "x-agent-secret: ${{ secrets.AGENT_SECRET }}")
+
+          body=$(echo "$response" | sed '$d')
+          code=$(echo "$response" | tail -n1)
+
+          echo "HTTP $code"
+          echo "$body"
+
+          if [ "$code" != "200" ]; then
+            echo "::error::agent scan failed with HTTP $code"
+            exit 1
+          fi
+
+          # Surface the result on the workflow summary page.
+          {
+            echo "### Agent scan"
+            echo ''
+            echo '```json'
+            echo "$body"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -31,6 +31,18 @@ const EnvSchema = z.object({
   AI_BASE_URL: z.string().url().default('https://api.groq.com/openai/v1'),
   AI_MODEL: z.string().default('llama-3.3-70b-versatile'),
   AI_MAX_TOKENS: z.coerce.number().int().positive().max(4000).default(900),
+
+  // ── Notification agent (all optional) ──────────────────────────────────────
+  // Shared secret for the unattended scan trigger (cron). When unset, the
+  // header route is disabled entirely and only an authenticated ADMIN can scan
+  // — fail closed rather than leaving an unauthenticated endpoint open.
+  AGENT_SECRET: z.string().min(16).optional(),
+  /** Resend API key. Without it the agent still runs; it just doesn't email. */
+  RESEND_API_KEY: z.string().optional(),
+  ALERT_EMAIL_TO: z.string().optional(),
+  ALERT_EMAIL_FROM: z.string().default('Fundsroom ERP <onboarding@resend.dev>'),
+  /** Public frontend URL, used to deep-link from emails. */
+  APP_URL: z.string().url().optional(),
 })
 
 const parsed = EnvSchema.safeParse(process.env)

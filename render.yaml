@@ -41,3 +41,15 @@ services:
         sync: false
       - key: AI_MODEL
         value: llama-3.3-70b-versatile
+      # Notification agent. AGENT_SECRET authenticates the scheduled scan;
+      # without it only a signed-in ADMIN can trigger one (fails closed).
+      - key: AGENT_SECRET
+        generateValue: true
+      # Email delivery (Resend). Optional — the agent still records alerts
+      # in-app when these are unset, it just doesn't send mail.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: ALERT_EMAIL_TO
+        sync: false
+      - key: APP_URL
+        sync: false

@@ -1,180 +1,121 @@
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '@/api/client'
 import { useAuth } from '@/features/auth/AuthContext'
+import {
+  useNotifications,
+  useToggleRead,
+  useMarkAllRead,
+  useRunScan,
+  useAgentStatus,
+  type Notification,
+  type NotificationSeverity,
+} from '@/api/notifications.api'
+import { usePrefs, typesFilter } from '@/features/settings/prefs'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
-import { EmptyState, LoadingState } from '@/components/ui/states'
-import { usePrefs } from '@/features/settings/prefs'
-import { money, relativeTime } from '@/lib/utils'
-import { cn } from '@/lib/utils'
-import type { Challan, Customer, Paginated, Product, StockLog } from '@/types/api'
+import { Badge } from '@/components/ui/Badge'
+import { Pagination } from '@/components/ui/Pagination'
+import { EmptyState, LoadingState, ErrorState } from '@/components/ui/states'
+import { cn, relativeTime } from '@/lib/utils'
 
-type Severity = 'error' | 'warning' | 'info' | 'neutral'
-
-interface Notif {
-  id: string
-  severity: Severity
-  icon: string
-  title: string
-  body: string
-  time: string
-  to?: string
+const SEVERITY: Record<NotificationSeverity, { chip: string; tone: 'error' | 'warning' | 'indigo' }> = {
+  CRITICAL: { chip: 'bg-error/15 text-error', tone: 'error' },
+  WARNING: { chip: 'bg-warning/15 text-warning', tone: 'warning' },
+  INFO: { chip: 'bg-secondary-container/25 text-secondary', tone: 'indigo' },
 }
 
-const SEVERITY_STYLE: Record<Severity, string> = {
-  error: 'bg-error/15 text-error',
-  warning: 'bg-warning/15 text-warning',
-  info: 'bg-secondary-container/25 text-secondary',
-  neutral: 'bg-surface-container-highest text-on-surface-variant',
-}
-
-const READ_KEY = 'fundsroom.notif.read.v1'
-
-function readReadSet(): Set<string> {
-  try {
-    const raw = localStorage.getItem(READ_KEY)
-    return new Set(raw ? (JSON.parse(raw) as string[]) : [])
-  } catch {
-    return new Set()
-  }
+const TYPE_ICON: Record<Notification['type'], string> = {
+  OUT_OF_STOCK: 'inventory_2',
+  LOW_STOCK: 'inventory_2',
+  DRAFT_STALE: 'pending_actions',
+  FOLLOW_UP_DUE: 'trending_up',
 }
 
 export function NotificationsPage() {
   const { user } = useAuth()
-  const role = user!.role
-  const canProducts = ['ADMIN', 'SALES', 'WAREHOUSE'].includes(role)
-  const canCRM = ['ADMIN', 'SALES', 'ACCOUNTS'].includes(role)
-  const canLedger = ['ADMIN', 'WAREHOUSE'].includes(role)
+  const isAdmin = user?.role === 'ADMIN'
 
-  const [prefs] = usePrefs()
-  const [readSet, setReadSet] = useState<Set<string>>(readReadSet)
   const [tab, setTab] = useState<'all' | 'unread'>('all')
+  const [page, setPage] = useState(1)
+  const [prefs] = usePrefs()
 
-  const lowStockQ = useQuery({
-    queryKey: ['notif', 'lowStock'],
-    queryFn: async () =>
-      (await api.get<Paginated<Product>>('/products', { params: { limit: 100, lowStock: 'true' } }))
-        .data.data,
-    enabled: canProducts && prefs.lowStock,
+  const q = useNotifications({
+    page,
+    limit: 20,
+    unread: tab === 'unread',
+    types: typesFilter(prefs),
   })
-  const draftQ = useQuery({
-    queryKey: ['notif', 'drafts'],
-    queryFn: async () =>
-      (await api.get<Paginated<Challan>>('/challans', { params: { limit: 100, status: 'DRAFT' } }))
-        .data.data,
-    enabled: canCRM && prefs.draftChallans,
-  })
-  const leadsQ = useQuery({
-    queryKey: ['notif', 'leads'],
-    queryFn: async () =>
-      (await api.get<Paginated<Customer>>('/customers', { params: { limit: 100, status: 'LEAD' } }))
-        .data.data,
-    enabled: canCRM && prefs.followUps,
-  })
-  const logsQ = useQuery({
-    queryKey: ['notif', 'stockLogs'],
-    queryFn: async () =>
-      (await api.get<Paginated<StockLog>>('/stock-logs', { params: { limit: 12 } })).data.data,
-    enabled: canLedger && prefs.stockActivity,
-  })
+  const agent = useAgentStatus()
+  const toggleRead = useToggleRead()
+  const markAll = useMarkAllRead()
+  const scan = useRunScan()
 
-  const notifs = useMemo<Notif[]>(() => {
-    const out: Notif[] = []
+  const items = q.data?.data ?? []
+  const unread = q.data?.unread ?? 0
 
-    for (const p of lowStockQ.data ?? []) {
-      const out_of = p.stockQuantity <= 0
-      out.push({
-        id: `ls-${p.id}`,
-        severity: out_of ? 'error' : 'warning',
-        icon: 'inventory_2',
-        title: out_of ? 'Out of stock' : 'Low stock',
-        body: `${p.name} (${p.sku}) — ${p.stockQuantity} left · min ${p.minStock}`,
-        time: p.updatedAt,
-        to: '/products',
-      })
-    }
-    for (const c of draftQ.data ?? []) {
-      out.push({
-        id: `dc-${c.id}`,
-        severity: 'info',
-        icon: 'pending_actions',
-        title: 'Challan awaiting confirmation',
-        body: `${c.challanNumber} · ${c.customer?.businessName ?? 'Customer'} · ${money(c.totalAmount)}`,
-        time: c.createdAt,
-        to: '/challans',
-      })
-    }
-    for (const cust of leadsQ.data ?? []) {
-      out.push({
-        id: `ld-${cust.id}`,
-        severity: 'info',
-        icon: 'trending_up',
-        title: 'Open lead — follow up',
-        body: `${cust.businessName} · ${cust.contactPerson} · ${cust.mobile}`,
-        time: cust.updatedAt,
-        to: '/customers',
-      })
-    }
-    for (const l of logsQ.data ?? []) {
-      out.push({
-        id: `sl-${l.id}`,
-        severity: 'neutral',
-        icon: 'swap_vert',
-        title: 'Stock movement',
-        body: `${l.product?.sku ?? ''} · ${l.reason} · ${l.quantityChange >= 0 ? '+' : '−'}${Math.abs(l.quantityChange)}`,
-        time: l.createdAt,
-      })
-    }
-
-    return out.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
-  }, [lowStockQ.data, draftQ.data, leadsQ.data, logsQ.data])
-
-  const unreadCount = notifs.filter((n) => !readSet.has(n.id)).length
-  const visible = tab === 'unread' ? notifs.filter((n) => !readSet.has(n.id)) : notifs
-
-  const loading =
-    lowStockQ.isLoading || draftQ.isLoading || leadsQ.isLoading || logsQ.isLoading
-
-  function persist(next: Set<string>) {
-    setReadSet(new Set(next))
-    try {
-      localStorage.setItem(READ_KEY, JSON.stringify([...next]))
-    } catch {
-      // best-effort
-    }
-  }
-  function markRead(id: string) {
-    const next = new Set(readSet)
-    next.add(id)
-    persist(next)
-  }
-  function markAllRead() {
-    const next = new Set(readSet)
-    notifs.forEach((n) => next.add(n.id))
-    persist(next)
+  function switchTab(t: 'all' | 'unread') {
+    setTab(t)
+    setPage(1)
   }
 
   return (
     <>
       <PageHeader
         title="Notifications"
-        subtitle="Operational alerts derived live from inventory, sales and CRM activity."
+        subtitle="Raised automatically by the operations agent from live inventory, sales and CRM data."
         actions={
-          <Button variant="secondary" size="sm" icon="done_all" onClick={markAllRead} disabled={unreadCount === 0}>
-            Mark all read
-          </Button>
+          <>
+            {isAdmin && (
+              <Button
+                variant="ai"
+                size="sm"
+                icon="radar"
+                loading={scan.isPending}
+                onClick={() => scan.mutate()}
+              >
+                Run scan
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="done_all"
+              disabled={unread === 0 || markAll.isPending}
+              loading={markAll.isPending}
+              onClick={() => markAll.mutate()}
+            >
+              Mark all read
+            </Button>
+          </>
         }
       />
 
-      <div className="mb-4 flex items-center gap-2">
+      {scan.isSuccess && scan.data && (
+        <Card className="mb-4 border-secondary-container/30 p-4">
+          <div className="flex items-start gap-3">
+            <Icon name="auto_awesome" size={18} className="mt-0.5 shrink-0 text-secondary" />
+            <div className="min-w-0">
+              <p className="text-body-sm font-medium text-on-surface">
+                Scan complete — {scan.data.detected} conditions found · {scan.data.created} new ·{' '}
+                {scan.data.resolved} resolved · {scan.data.durationMs} ms
+              </p>
+              {scan.data.digest && (
+                <p className="mt-2 whitespace-pre-wrap text-body-sm text-on-surface-variant">
+                  {scan.data.digest}
+                </p>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         {(['all', 'unread'] as const).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => switchTab(t)}
             className={cn(
               'rounded-lg px-3 py-1.5 text-body-sm font-medium capitalize transition-colors',
               tab === t
@@ -183,79 +124,96 @@ export function NotificationsPage() {
             )}
           >
             {t}
-            {t === 'unread' && unreadCount > 0 && (
+            {t === 'unread' && unread > 0 && (
               <span className="ml-1.5 rounded-full bg-secondary-container/40 px-1.5 font-data-mono text-[10px] text-secondary">
-                {unreadCount}
+                {unread}
               </span>
             )}
           </button>
         ))}
-        <span className="ml-auto text-body-sm text-on-surface-variant">
-          Streams configured in{' '}
-          <Link to="/settings" className="text-secondary hover:underline">
-            Settings
-          </Link>
+        <span className="ml-auto flex items-center gap-2 text-body-sm text-on-surface-variant">
+          {agent.data?.aiConfigured && <Badge tone="indigo">AI digest</Badge>}
+          {agent.data?.emailConfigured && <Badge tone="success">Email on</Badge>}
+          {agent.data?.scheduleConfigured && <Badge tone="neutral">Scheduled</Badge>}
         </span>
       </div>
 
       <Card className="p-2">
-        {loading ? (
-          <LoadingState label="Gathering alerts…" />
-        ) : visible.length === 0 ? (
+        {q.isError ? (
+          <ErrorState error={q.error} onRetry={() => void q.refetch()} />
+        ) : q.isLoading ? (
+          <LoadingState label="Loading alerts…" />
+        ) : items.length === 0 ? (
           <EmptyState
             icon="notifications_off"
-            title={tab === 'unread' ? "You're all caught up" : 'No notifications'}
+            title={tab === 'unread' ? "You're all caught up" : 'No open alerts'}
             hint={
               tab === 'unread'
-                ? 'No unread alerts right now.'
-                : 'Alerts appear here when stock runs low, challans await confirmation, or leads need follow-up.'
+                ? 'Nothing unread right now.'
+                : 'The agent raises alerts when stock runs low, challans go unconfirmed, or follow-ups fall due.'
+            }
+            action={
+              isAdmin ? (
+                <Button variant="secondary" size="sm" icon="radar" onClick={() => scan.mutate()}>
+                  Run a scan now
+                </Button>
+              ) : undefined
             }
           />
         ) : (
           <ul className="divide-y divide-outline-variant/10">
-            {visible.map((n) => {
-              const isRead = readSet.has(n.id)
-              const Row = (
-                <div className="flex items-start gap-3 px-3 py-3">
-                  <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', SEVERITY_STYLE[n.severity])}>
-                    <Icon name={n.icon} size={18} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      {!isRead && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-secondary" />}
-                      <p className={cn('truncate text-body-sm', isRead ? 'text-on-surface-variant' : 'font-medium text-on-surface')}>
-                        {n.title}
-                      </p>
-                    </div>
-                    <p className="mt-0.5 truncate text-body-sm text-on-surface-variant">{n.body}</p>
-                  </div>
-                  <span className="shrink-0 font-data-mono text-data-mono text-on-surface-variant/70">
-                    {relativeTime(n.time)}
-                  </span>
-                </div>
-              )
+            {items.map((n) => {
+              const isRead = n.readAt !== null
+              const sev = SEVERITY[n.severity]
               return (
                 <li
                   key={n.id}
-                  onClick={() => markRead(n.id)}
                   className={cn(
-                    'cursor-pointer rounded-lg transition-colors hover:bg-surface-container-high',
+                    'flex items-start gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-surface-container-high',
                     !isRead && 'bg-surface-container-low',
                   )}
                 >
-                  {n.to ? (
-                    <Link to={n.to} className="block">
-                      {Row}
-                    </Link>
-                  ) : (
-                    Row
-                  )}
+                  <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', sev.chip)}>
+                    <Icon name={TYPE_ICON[n.type]} size={18} />
+                  </span>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {!isRead && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-secondary" />}
+                      <p className={cn('text-body-sm', isRead ? 'text-on-surface-variant' : 'font-medium text-on-surface')}>
+                        {n.title}
+                      </p>
+                      <Badge tone={sev.tone}>{n.severity}</Badge>
+                      {n.entityRef && (
+                        <span className="font-mono text-data-mono text-on-surface-variant/70">{n.entityRef}</span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-body-sm text-on-surface-variant">{n.body}</p>
+                    <div className="mt-1.5 flex items-center gap-3">
+                      <span className="font-data-mono text-data-mono text-on-surface-variant/60">
+                        {relativeTime(n.createdAt)}
+                      </span>
+                      {n.href && (
+                        <Link to={n.href} className="text-body-sm text-secondary hover:underline">
+                          View
+                        </Link>
+                      )}
+                      <button
+                        onClick={() => toggleRead.mutate(n.id)}
+                        className="text-body-sm text-on-surface-variant hover:text-on-surface"
+                      >
+                        Mark {isRead ? 'unread' : 'read'}
+                      </button>
+                    </div>
+                  </div>
                 </li>
               )
             })}
           </ul>
         )}
       </Card>
+
+      <Pagination meta={q.data?.pagination} onPage={setPage} />
     </>
   )
 }

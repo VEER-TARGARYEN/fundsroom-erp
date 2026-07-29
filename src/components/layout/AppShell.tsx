@@ -5,6 +5,7 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { navForRole, type NavItem } from '@/config/navigation'
 import { Icon } from '@/components/ui/Icon'
 import { LoadingState } from '@/components/ui/states'
+import { useUnreadCount } from '@/api/notifications.api'
 import { CommandPalette } from './CommandPalette'
 
 const SECTION_LABEL: Record<NavItem['section'], string> = {
@@ -18,6 +19,7 @@ export function AppShell() {
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const { data: unread = 0 } = useUnreadCount()
 
   const items = user ? navForRole(user.role) : []
   const sections: NavItem['section'][] = ['main', 'ai', 'system']
@@ -150,7 +152,13 @@ export function AppShell() {
               aria-label="Notifications"
             >
               <Icon name="notifications" size={20} />
-              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-secondary ring-2 ring-background" />
+              {/* Real unread count, polled — a scheduled scan surfaces here
+                  without the user having to reload. */}
+              {unread > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 font-data-mono text-[10px] font-semibold text-on-error ring-2 ring-background">
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
             </button>
             <button
               type="button"

@@ -54,6 +54,20 @@ enum ChallanStatus {
   CANCELLED
 }
 
+/** Conditions the notification agent watches for. */
+enum NotificationType {
+  OUT_OF_STOCK
+  LOW_STOCK
+  DRAFT_STALE
+  FOLLOW_UP_DUE
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
 // ─────────────────────────────── Models ─────────────────────────────────────
 
 model User {
@@ -182,4 +196,34 @@ model ChallanItem {
   @@index([challanId])
   @@index([productId])
   @@map("challan_items")
+}
+
+/**
+ * Alerts raised by the notification agent (src/services/agent.service.ts).
+ *
+ * The table is a live view of currently-open issues, not an append-only log:
+ * each scan reconciles it against reality, inserting new conditions and
+ * clearing ones that have been resolved. `@@unique([type, entityId])` is what
+ * makes a repeated scan idempotent — the same low-stock SKU can only ever hold
+ * one open alert, so re-running the agent never duplicates or resets read state.
+ */
+model Notification {
+  id        String               @id @default(uuid()) @db.Uuid
+  type      NotificationType
+  severity  NotificationSeverity @default(INFO)
+  title     String
+  body      String
+  /** The row this alert is about — product, challan or customer id. */
+  entityId  String?              @map("entity_id") @db.Uuid
+  /** Human-facing reference (SKU, challan number) for display and search. */
+  entityRef String?              @map("entity_ref")
+  /** Deep link into the app, e.g. /products. */
+  href      String?
+  readAt    DateTime?            @map("read_at")
+  createdAt DateTime             @default(now()) @map("created_at")
+
+  @@unique([type, entityId])
+  @@index([readAt])
+  @@index([createdAt])
+  @@map("notifications")
 }
