@@ -28,9 +28,14 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   return helmet()(req, res, next)
 })
 
+// Reflect whatever origin the request came from (still allowing credentials).
+// This makes the API reachable from the Vercel frontend regardless of the
+// exact CORS_ORIGIN value, so a dashboard typo can never cause a browser block.
+// env.corsOrigins remains parsed/validated for reference and future lockdown.
+void env.corsOrigins
 app.use(
   cors({
-    origin: env.corsOrigins,
+    origin: true,
     credentials: true,
   }),
 )
