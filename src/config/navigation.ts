@@ -6,8 +6,6 @@ export interface NavItem {
   icon: string
   roles: Role[]
   section: 'main' | 'ai' | 'system'
-  /** No backend yet — routes to a "Backend Pending" stub. */
-  stub?: boolean
 }
 
 const ALL: Role[] = ['ADMIN', 'SALES', 'WAREHOUSE', 'ACCOUNTS']

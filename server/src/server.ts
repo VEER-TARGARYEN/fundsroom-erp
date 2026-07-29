@@ -9,6 +9,13 @@ async function main() {
   // Apply the CHECK constraint + challan sequence (idempotent) before serving.
   await ensureDatabaseConstraints()
 
+  // Surface the effective allowlist at boot — a CORS mismatch is otherwise
+  // invisible server-side and shows up only as a blocked request in the browser.
+  logger.info({ corsOrigins: env.corsOrigins }, '🔐 CORS allowlist')
+  if (env.isProd && env.corsOrigins.some((o) => o.includes('localhost'))) {
+    logger.warn('CORS_ORIGIN still contains localhost in production — set it to the deployed frontend URL')
+  }
+
   const server = app.listen(env.PORT, () => {
     logger.info(`🚀 Fundsroom API listening on http://localhost:${env.PORT}`)
     logger.info(`📚 API docs at http://localhost:${env.PORT}/api/docs`)

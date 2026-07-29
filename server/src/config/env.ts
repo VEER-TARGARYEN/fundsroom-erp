@@ -46,13 +46,21 @@ if (!parsed.success) {
 
 const raw = parsed.data
 
+/**
+ * Canonical form of an origin for comparison. A browser's `Origin` header is
+ * always scheme+host+port with no trailing slash and a lowercase host, but a
+ * URL pasted from an address bar into a dashboard usually keeps the trailing
+ * slash — normalizing both sides stops that mismatch from silently breaking CORS.
+ */
+export function normalizeOrigin(origin: string): string {
+  return origin.trim().toLowerCase().replace(/\/+$/, '')
+}
+
 export const env = {
   ...raw,
   isProd: raw.NODE_ENV === 'production',
   isDev: raw.NODE_ENV === 'development',
-  corsOrigins: raw.CORS_ORIGIN.split(',')
-    .map((o) => o.trim())
-    .filter(Boolean),
+  corsOrigins: raw.CORS_ORIGIN.split(',').map(normalizeOrigin).filter(Boolean),
 }
 
 export type Env = typeof env

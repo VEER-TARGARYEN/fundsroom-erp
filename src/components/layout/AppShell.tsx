@@ -82,11 +82,6 @@ export function AppShell() {
                     >
                       <Icon name={item.icon} size={20} className={item.section === 'ai' ? 'animate-pulse' : ''} />
                       <span className="flex-1">{item.label}</span>
-                      {item.stub && (
-                        <span className="rounded bg-surface-container-highest px-1.5 py-0.5 font-data-mono text-[10px] text-on-surface-variant/70">
-                          soon
-                        </span>
-                      )}
                     </NavLink>
                   ))}
                 </div>

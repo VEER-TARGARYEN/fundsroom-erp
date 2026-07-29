@@ -5,7 +5,7 @@ import compression from 'compression'
 import cookieParser from 'cookie-parser'
 import { pinoHttp } from 'pino-http'
 import swaggerUi from 'swagger-ui-express'
-import { env } from './config/env'
+import { env, normalizeOrigin } from './config/env'
 import { logger } from './config/logger'
 import { globalLimiter } from './middleware/rateLimit'
 import { errorHandler, notFoundHandler } from './middleware/error'
@@ -28,14 +28,23 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   return helmet()(req, res, next)
 })
 
-// Reflect whatever origin the request came from (still allowing credentials).
-// This makes the API reachable from the Vercel frontend regardless of the
-// exact CORS_ORIGIN value, so a dashboard typo can never cause a browser block.
-// env.corsOrigins remains parsed/validated for reference and future lockdown.
-void env.corsOrigins
+// Strict origin allowlist. `credentials: true` means a reflected origin would
+// let ANY site issue authenticated requests with the user's cookie, so the
+// allowlist must stay explicit — never reflect the caller's origin here.
+const allowedOrigins = new Set(env.corsOrigins)
+
 app.use(
   cors({
-    origin: true,
+    origin(origin, callback) {
+      // No Origin header: curl, health checks, server-to-server. Not a browser
+      // cross-site request, so there is no cookie to protect.
+      if (!origin) return callback(null, true)
+      if (allowedOrigins.has(normalizeOrigin(origin))) return callback(null, true)
+      // Deny by omitting CORS headers rather than throwing — the browser blocks
+      // it either way, and a stray crawler shouldn't surface as a 500.
+      logger.warn({ origin }, 'CORS: origin not in allowlist')
+      return callback(null, false)
+    },
     credentials: true,
   }),
 )
