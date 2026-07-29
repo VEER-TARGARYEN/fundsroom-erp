@@ -21,9 +21,9 @@ export const NAV: NavItem[] = [
 
   { label: 'AI Assistant', path: '/ai', icon: 'auto_awesome', roles: ['ADMIN', 'SALES', 'ACCOUNTS'], section: 'ai' },
 
-  { label: 'Reports', path: '/reports', icon: 'monitoring', roles: ['ADMIN', 'ACCOUNTS'], section: 'system', stub: true },
-  { label: 'Notifications', path: '/notifications', icon: 'notifications', roles: ALL, section: 'system', stub: true },
-  { label: 'Settings', path: '/settings', icon: 'settings', roles: ALL, section: 'system', stub: true },
+  { label: 'Reports', path: '/reports', icon: 'monitoring', roles: ['ADMIN', 'SALES', 'ACCOUNTS', 'WAREHOUSE'], section: 'system' },
+  { label: 'Notifications', path: '/notifications', icon: 'notifications', roles: ALL, section: 'system' },
+  { label: 'Settings', path: '/settings', icon: 'settings', roles: ALL, section: 'system' },
 ]
 
 export function navForRole(role: Role): NavItem[] {

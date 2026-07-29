@@ -8,7 +8,9 @@ import { ProductsPage } from '@/features/products/ProductsPage'
 import { InventoryPage } from '@/features/inventory/InventoryPage'
 import { ChallansPage } from '@/features/challans/ChallansPage'
 import { AIPage } from '@/features/ai/AIPage'
-import { StubPage } from '@/components/StubPage'
+import { ReportsPage } from '@/features/reports/ReportsPage'
+import { NotificationsPage } from '@/features/notifications/NotificationsPage'
+import { SettingsPage } from '@/features/settings/SettingsPage'
 
 export default function App() {
   return (
@@ -62,40 +64,10 @@ export default function App() {
             }
           />
 
-          {/* Stitch screens whose backend is not built yet */}
-          <Route
-            path="reports"
-            element={
-              <StubPage
-                title="Reports & Analytics"
-                subtitle="Sales, customer and inventory analytics."
-                icon="monitoring"
-                planned={['Sales & inventory trend charts', 'Date-range comparisons', 'CSV / PDF export', 'AI-generated insights']}
-              />
-            }
-          />
-          <Route
-            path="notifications"
-            element={
-              <StubPage
-                title="Notifications"
-                subtitle="Operational alerts and activity."
-                icon="notifications"
-                planned={['Unread inbox + grouping', 'Mark as read / mark all', 'Low-stock & challan alerts', 'Realtime push over WebSocket']}
-              />
-            }
-          />
-          <Route
-            path="settings"
-            element={
-              <StubPage
-                title="Settings"
-                subtitle="Profile, security and workspace."
-                icon="settings"
-                planned={['Profile & appearance', 'Security & sessions', 'Workspace & team', 'AI preferences']}
-              />
-            }
-          />
+          {/* Reports — analytics available to any role that can see the underlying data */}
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="settings" element={<SettingsPage />} />
 
           <Route path="*" element={<NotFound />} />
         </Route>
