@@ -25,10 +25,14 @@ export function CountUp({
   const reduce = useReducedMotion()
   const [display, setDisplay] = useState(() => (reduce ? value : 0))
   const frame = useRef<number>()
+  const settle = useRef<ReturnType<typeof setTimeout>>()
   const from = useRef(0)
 
   useEffect(() => {
-    if (reduce || !Number.isFinite(value)) {
+    // A hidden tab gets no animation frames, which would otherwise leave the
+    // figure reading 0 indefinitely — worse than not animating at all.
+    if (reduce || !Number.isFinite(value) || document.hidden) {
+      from.current = value
       setDisplay(value)
       return
     }
@@ -46,8 +50,17 @@ export function CountUp({
     }
 
     frame.current = requestAnimationFrame(tick)
+
+    // Safety net: timers still fire when frames don't (backgrounded tab,
+    // throttled renderer), so the correct number always lands.
+    settle.current = setTimeout(() => {
+      from.current = value
+      setDisplay(value)
+    }, duration + 150)
+
     return () => {
       if (frame.current) cancelAnimationFrame(frame.current)
+      if (settle.current) clearTimeout(settle.current)
     }
   }, [value, duration, reduce])
 
