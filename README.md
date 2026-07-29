@@ -86,7 +86,7 @@ The repo ships a `render.yaml` at the project root. Render will pick it up autom
    | `CORS_ORIGIN` | Your Vercel frontend URL, e.g. `https://fundsroom-erp.vercel.app` |
 
 5. Click **Apply** / **Deploy**. First deploy takes ~3 min (installs, `prisma generate`, TypeScript build).
-6. Once live, visit `https://<your-render-slug>.onrender.com/health` — should return `{"status":"ok"}`.
+6. Once live, visit `https://<your-render-slug>.onrender.com/api/health` — should return `{"status":"ok"}`.
 
 #### Option B — Manual (if Blueprint is unavailable)
 
@@ -118,7 +118,7 @@ The repo ships a `render.yaml` at the project root. Render will pick it up autom
    | `RATE_LIMIT_MAX` | `300` |
    | `RUN_SEED` | `true` |
 
-6. **Health check path:** `/health`
+6. **Health check path:** `/api/health`
 
 ---
 
@@ -133,7 +133,7 @@ The repo ships a `render.yaml` at the project root. Render will pick it up autom
 
    | Key | Value |
    |-----|-------|
-   | `VITE_API_URL` | `https://<your-render-slug>.onrender.com` |
+   | `VITE_API_URL` | `https://<your-render-slug>.onrender.com/api` |
 
 7. Click **Deploy**. Vercel runs the Vite build and publishes to a global CDN.
 8. The `vercel.json` in the repo handles SPA routing (all non-asset paths rewrite to `/index.html`) and sets `Cache-Control: immutable` on hashed JS/CSS assets.
@@ -145,7 +145,7 @@ The repo ships a `render.yaml` at the project root. Render will pick it up autom
 
 ```bash
 # 1. Health
-curl https://<render-slug>.onrender.com/health
+curl https://<render-slug>.onrender.com/api/health
 
 # 2. Login
 curl -s -X POST https://<render-slug>.onrender.com/api/auth/login \
@@ -207,7 +207,7 @@ npm run dev                   # tsx watch → http://localhost:4000
 # in project root (fundsroom-erp/)
 npm install
 # create .env.local:
-echo 'VITE_API_URL=http://localhost:4000' > .env.local
+echo 'VITE_API_URL=http://localhost:4000/api' > .env.local
 npm run dev                   # Vite HMR → http://localhost:5173
 ```
 
