@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Type-safety */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "skipLibCheck": true,
+
+    /* Swagger reads @openapi JSDoc from the emitted .js at runtime,
+       so comments MUST survive compilation. */
+    "removeComments": false,
+    "sourceMap": true,
+    "declaration": false
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

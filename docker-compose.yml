@@ -1,0 +1,61 @@
+# Fundsroom ERP — full stack in one command:  docker compose up --build
+# (Modern Compose spec — no obsolete top-level `version:` key.)
+name: fundsroom-erp
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fundsroom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-fundsroom}
+    ports:
+      - "5432:5432" # exposed for local Prisma Studio / psql; remove for prod
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fundsroom} -d ${POSTGRES_DB:-fundsroom}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── API (Express + Prisma) ──────────────────────────────────────────────────
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy # wait for pg_isready, not just start order
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fundsroom}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-fundsroom}?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET in .env}
+      ACCESS_TOKEN_TTL: "15m"
+      REFRESH_TOKEN_TTL: "7d"
+      CORS_ORIGIN: "http://localhost:8080,http://localhost:5173"
+      RUN_SEED: "true"
+    ports:
+      - "4000:4000" # Swagger UI at http://localhost:4000/api/docs
+
+  # ── Frontend (Vite build served by nginx, reverse-proxying /api) ─────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api # relative -> same origin, so no CORS in the browser
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:
