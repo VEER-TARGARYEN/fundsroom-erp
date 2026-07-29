@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/features/auth/AuthContext'
 import { navForRole, type NavItem } from '@/config/navigation'
 import { Icon } from '@/components/ui/Icon'
+import { LoadingState } from '@/components/ui/states'
 import { CommandPalette } from './CommandPalette'
 
 const SECTION_LABEL: Record<NavItem['section'], string> = {
@@ -163,7 +164,10 @@ export function AppShell() {
         </header>
 
         <main className="mx-auto w-full max-w-[1440px] px-4 py-6 lg:px-margin-desktop lg:py-8">
-          <Outlet />
+          {/* Route chunks stream in here; the shell around it stays put. */}
+          <Suspense fallback={<LoadingState />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 

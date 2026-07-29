@@ -1,16 +1,36 @@
+import { lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { AppShell } from '@/components/layout/AppShell'
 import { RequireAuth, RequireRole, NotFound } from '@/components/guards'
-import { DashboardPage } from '@/features/dashboard/DashboardPage'
-import { CustomersPage } from '@/features/customers/CustomersPage'
-import { ProductsPage } from '@/features/products/ProductsPage'
-import { InventoryPage } from '@/features/inventory/InventoryPage'
-import { ChallansPage } from '@/features/challans/ChallansPage'
-import { AIPage } from '@/features/ai/AIPage'
-import { ReportsPage } from '@/features/reports/ReportsPage'
-import { NotificationsPage } from '@/features/notifications/NotificationsPage'
-import { SettingsPage } from '@/features/settings/SettingsPage'
+
+/**
+ * Feature pages are split into their own chunks so the first paint only ships
+ * the shell, the login screen and whichever page was actually requested. On the
+ * free tier this matters twice over: less to download, and less to parse on a
+ * cold, throttled connection.
+ *
+ * Each page is a named export, hence the `.then` re-map to a default export.
+ * `AppShell` wraps its <Outlet /> in Suspense, so the sidebar and header stay on
+ * screen while a page chunk streams in.
+ */
+const lazyPage = <T extends Record<string, React.ComponentType<unknown>>>(
+  loader: () => Promise<T>,
+  name: keyof T,
+) => lazy(() => loader().then((m) => ({ default: m[name] })))
+
+const DashboardPage = lazyPage(() => import('@/features/dashboard/DashboardPage'), 'DashboardPage')
+const CustomersPage = lazyPage(() => import('@/features/customers/CustomersPage'), 'CustomersPage')
+const ProductsPage = lazyPage(() => import('@/features/products/ProductsPage'), 'ProductsPage')
+const InventoryPage = lazyPage(() => import('@/features/inventory/InventoryPage'), 'InventoryPage')
+const ChallansPage = lazyPage(() => import('@/features/challans/ChallansPage'), 'ChallansPage')
+const AIPage = lazyPage(() => import('@/features/ai/AIPage'), 'AIPage')
+const ReportsPage = lazyPage(() => import('@/features/reports/ReportsPage'), 'ReportsPage')
+const NotificationsPage = lazyPage(
+  () => import('@/features/notifications/NotificationsPage'),
+  'NotificationsPage',
+)
+const SettingsPage = lazyPage(() => import('@/features/settings/SettingsPage'), 'SettingsPage')
 
 export default function App() {
   return (
