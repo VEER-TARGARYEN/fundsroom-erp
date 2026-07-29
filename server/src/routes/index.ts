@@ -5,6 +5,7 @@ import productRoutes from './product.routes'
 import stockLogRoutes from './stockLog.routes'
 import challanRoutes from './challan.routes'
 import dashboardRoutes from './dashboard.routes'
+import reportsRoutes from './reports.routes'
 import aiRoutes from './ai.routes'
 import { asyncHandler } from '../utils/asyncHandler'
 import { prisma } from '../config/prisma'
@@ -36,6 +37,7 @@ router.use('/products', productRoutes)
 router.use('/stock-logs', stockLogRoutes)
 router.use('/challans', challanRoutes)
 router.use('/dashboard', dashboardRoutes)
+router.use('/reports', reportsRoutes)
 router.use('/ai', aiRoutes)
 
 export default router
