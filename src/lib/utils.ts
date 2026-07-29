@@ -9,13 +9,32 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-/** Format a number as Indian Rupee currency (compact for large KPI values). */
+/**
+ * Format a number as Indian Rupee currency.
+ *
+ * The compact form is hand-rolled rather than using `notation: 'compact'`,
+ * which degrades past a lakh-crore and renders ₹1,08,20,00,00,000 as "₹1KCr".
+ * Lakh/crore units are applied explicitly so large figures stay readable.
+ */
 export function formatCurrency(value: number, compact = false): string {
+  if (!Number.isFinite(value)) return '₹0'
+
+  if (compact) {
+    const abs = Math.abs(value)
+    const sign = value < 0 ? '-' : ''
+    const grouped = (n: number, dp: number) =>
+      new Intl.NumberFormat('en-IN', { maximumFractionDigits: dp }).format(n)
+
+    if (abs >= 1e7) return `${sign}₹${grouped(abs / 1e7, abs >= 1e9 ? 0 : 2)} Cr`
+    if (abs >= 1e5) return `${sign}₹${grouped(abs / 1e5, 2)} L`
+    if (abs >= 1e3) return `${sign}₹${grouped(abs / 1e3, 1)} K`
+    return `${sign}₹${grouped(abs, 0)}`
+  }
+
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
     maximumFractionDigits: 0,
-    notation: compact ? 'compact' : 'standard',
   }).format(value)
 }
 
