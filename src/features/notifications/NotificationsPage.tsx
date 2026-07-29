@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Pagination } from '@/components/ui/Pagination'
 import { EmptyState, LoadingState, ErrorState } from '@/components/ui/states'
+import { m } from '@/components/motion'
 import { cn, relativeTime } from '@/lib/utils'
 
 const SEVERITY: Record<NotificationSeverity, { chip: string; tone: 'error' | 'warning' | 'indigo' }> = {
@@ -161,13 +162,22 @@ export function NotificationsPage() {
             }
           />
         ) : (
-          <ul className="divide-y divide-outline-variant/10">
+          <m.ul
+            className="divide-y divide-outline-variant/10"
+            initial="hidden"
+            animate="show"
+            variants={{ hidden: {}, show: { transition: { staggerChildren: 0.03 } } }}
+          >
             {items.map((n) => {
               const isRead = n.readAt !== null
               const sev = SEVERITY[n.severity]
               return (
-                <li
+                <m.li
                   key={n.id}
+                  variants={{
+                    hidden: { opacity: 0, y: 8 },
+                    show: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } },
+                  }}
                   className={cn(
                     'flex items-start gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-surface-container-high',
                     !isRead && 'bg-surface-container-low',
@@ -206,10 +216,10 @@ export function NotificationsPage() {
                       </button>
                     </div>
                   </div>
-                </li>
+                </m.li>
               )
             })}
-          </ul>
+          </m.ul>
         )}
       </Card>
 

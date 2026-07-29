@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { AnimatePresence, m, useReducedMotion } from 'motion/react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/features/auth/AuthContext'
 import { navForRole, type NavItem } from '@/config/navigation'
@@ -20,6 +21,8 @@ export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const { data: unread = 0 } = useUnreadCount()
+  const location = useLocation()
+  const reduceMotion = useReducedMotion()
 
   const items = user ? navForRole(user.role) : []
   const sections: NavItem['section'][] = ['main', 'ai', 'system']
@@ -154,11 +157,22 @@ export function AppShell() {
               <Icon name="notifications" size={20} />
               {/* Real unread count, polled — a scheduled scan surfaces here
                   without the user having to reload. */}
-              {unread > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 font-data-mono text-[10px] font-semibold text-on-error ring-2 ring-background">
-                  {unread > 99 ? '99+' : unread}
-                </span>
-              )}
+              <AnimatePresence>
+                {unread > 0 && (
+                  <m.span
+                    // Re-keyed on the count so a newly-arrived alert pops
+                    // rather than silently swapping the number.
+                    key={unread}
+                    className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 font-data-mono text-[10px] font-semibold text-on-error ring-2 ring-background"
+                    initial={reduceMotion ? { opacity: 0 } : { scale: 0.4, opacity: 0 }}
+                    animate={reduceMotion ? { opacity: 1 } : { scale: 1, opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 20 }}
+                  >
+                    {unread > 99 ? '99+' : unread}
+                  </m.span>
+                )}
+              </AnimatePresence>
             </button>
             <button
               type="button"
@@ -172,9 +186,21 @@ export function AppShell() {
         </header>
 
         <main className="mx-auto w-full max-w-[1440px] px-4 py-6 lg:px-margin-desktop lg:py-8">
-          {/* Route chunks stream in here; the shell around it stays put. */}
+          {/* Route chunks stream in here; the shell around it stays put.
+              Keying on pathname gives each route its own enter transition;
+              mode="wait" avoids the outgoing and incoming pages overlapping. */}
           <Suspense fallback={<LoadingState />}>
-            <Outlet />
+            <AnimatePresence mode="wait" initial={false}>
+              <m.div
+                key={location.pathname}
+                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <Outlet />
+              </m.div>
+            </AnimatePresence>
           </Suspense>
         </main>
       </div>

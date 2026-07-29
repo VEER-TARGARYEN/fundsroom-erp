@@ -6,6 +6,8 @@ import { Card } from '@/components/ui/Card'
 import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
 import { Skeleton, ErrorState } from '@/components/ui/states'
+import { CountUp } from '@/components/ui/CountUp'
+import { Stagger, StaggerItem, m } from '@/components/motion'
 import { money, formatNumber } from '@/lib/utils'
 import { CHALLAN_STATUS } from '@/config/statusMeta'
 
@@ -47,9 +49,13 @@ function BarList({
             </span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-surface-container-highest">
-            <div
-              className="h-full rounded-full bg-secondary transition-[width] duration-700 ease-out"
-              style={{ width: `${(values[i]! / max) * 100}%` }}
+            {/* Grows from zero on mount and staggers down the list, so the
+                ranking reads as it draws. */}
+            <m.div
+              className="h-full rounded-full bg-secondary"
+              initial={{ width: 0 }}
+              animate={{ width: `${(values[i]! / max) * 100}%` }}
+              transition={{ duration: 0.7, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] }}
             />
           </div>
         </div>
@@ -89,17 +95,27 @@ export function ReportsPage() {
   const s = data?.sales
   const avgOrder = s && s.confirmed > 0 ? Number.parseFloat(s.value) / s.confirmed : 0
 
+  const int = (n: number) => formatNumber(Math.round(n))
+  const inr = (n: number) => money(n, true)
+
   const kpis = [
-    s && { label: 'Sales Value', value: money(s.value, true), icon: 'payments', caption: 'Confirmed challans' },
+    s && { label: 'Sales Value', value: Number.parseFloat(s.value) || 0, format: inr, icon: 'payments', caption: 'Confirmed challans' },
     s && {
       label: 'Confirmed Orders',
-      value: formatNumber(s.confirmed),
+      value: s.confirmed,
+      format: int,
       icon: 'receipt_long',
       caption: `Avg ${money(avgOrder, true)}`,
     },
-    p && { label: 'Inventory Value', value: money(p.inventoryValue, true), icon: 'inventory_2', caption: `${formatNumber(p.total)} SKUs` },
-    p && { label: 'Low Stock SKUs', value: formatNumber(p.lowStock), icon: 'warning', caption: 'At or below minimum' },
-  ].filter(Boolean) as { label: string; value: string; icon: string; caption: string }[]
+    p && { label: 'Inventory Value', value: Number.parseFloat(p.inventoryValue) || 0, format: inr, icon: 'inventory_2', caption: `${formatNumber(p.total)} SKUs` },
+    p && { label: 'Low Stock SKUs', value: p.lowStock, format: int, icon: 'warning', caption: 'At or below minimum' },
+  ].filter(Boolean) as {
+    label: string
+    value: number
+    format: (n: number) => string
+    icon: string
+    caption: string
+  }[]
 
   const statusBars: ReportBucket[] = s
     ? [
@@ -144,7 +160,7 @@ export function ReportsPage() {
         }
       />
 
-      <section className="grid grid-cols-1 gap-gutter sm:grid-cols-2 xl:grid-cols-4">
+      <Stagger className="grid grid-cols-1 gap-gutter sm:grid-cols-2 xl:grid-cols-4">
         {isLoading
           ? [0, 1, 2, 3].map((i) => (
               <Card key={i} className="flex min-h-[124px] flex-col justify-between p-5">
@@ -157,18 +173,24 @@ export function ReportsPage() {
               </Card>
             ))
           : kpis.map((k) => (
-              <Card key={k.label} className="flex min-h-[124px] flex-col justify-between p-5">
-                <div className="flex items-start justify-between">
-                  <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">{k.label}</span>
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-container-highest text-on-surface-variant">
-                    <Icon name={k.icon} size={20} />
-                  </span>
-                </div>
-                <p className="mt-2 text-headline-sm font-medium text-on-surface">{k.value}</p>
-                <p className="mt-1 text-body-sm text-on-surface-variant">{k.caption}</p>
-              </Card>
+              <StaggerItem key={k.label}>
+                <Card className="flex h-full min-h-[124px] flex-col justify-between p-5">
+                  <div className="flex items-start justify-between">
+                    <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">{k.label}</span>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-container-highest text-on-surface-variant">
+                      <Icon name={k.icon} size={20} />
+                    </span>
+                  </div>
+                  <CountUp
+                    value={k.value}
+                    format={k.format}
+                    className="mt-2 text-headline-sm font-medium text-on-surface"
+                  />
+                  <p className="mt-1 text-body-sm text-on-surface-variant">{k.caption}</p>
+                </Card>
+              </StaggerItem>
             ))}
-      </section>
+      </Stagger>
 
       <div className="mt-6 grid grid-cols-1 gap-gutter lg:grid-cols-2">
         {p && (

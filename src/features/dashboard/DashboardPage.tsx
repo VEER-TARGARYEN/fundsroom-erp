@@ -6,12 +6,16 @@ import { Card } from '@/components/ui/Card'
 import { Icon } from '@/components/ui/Icon'
 import { Badge } from '@/components/ui/Badge'
 import { Skeleton, ErrorState } from '@/components/ui/states'
+import { CountUp } from '@/components/ui/CountUp'
+import { Stagger, StaggerItem, Pressable, FadeIn } from '@/components/motion'
 import { cn, money, relativeTime, formatNumber } from '@/lib/utils'
 import { CHALLAN_STATUS, MOVEMENT } from '@/config/statusMeta'
 
 interface Kpi {
   label: string
-  value: string
+  /** Raw magnitude — CountUp animates this and `format` renders it. */
+  value: number
+  format: (n: number) => string
   icon: string
   caption?: string
   tone?: 'default' | 'error'
@@ -33,12 +37,16 @@ export function DashboardPage() {
     )
   }
 
+  const int = (n: number) => formatNumber(Math.round(n))
+  const inr = (n: number) => money(n, true)
+
   const kpis: Kpi[] = []
   if (data?.customers) {
-    kpis.push({ label: 'Total Customers', value: formatNumber(data.customers.total), icon: 'groups', to: '/customers' })
+    kpis.push({ label: 'Total Customers', value: data.customers.total, format: int, icon: 'groups', to: '/customers' })
     kpis.push({
       label: 'Active Customers',
-      value: formatNumber(data.customers.active),
+      value: data.customers.active,
+      format: int,
       icon: 'person_check',
       caption: `${formatNumber(data.customers.leads)} open leads`,
       to: '/customers',
@@ -47,7 +55,8 @@ export function DashboardPage() {
   if (data?.challans) {
     kpis.push({
       label: 'Pending Challans',
-      value: formatNumber(data.challans.draft),
+      value: data.challans.draft,
+      format: int,
       icon: 'pending_actions',
       caption: 'Awaiting confirmation',
       to: '/challans',
@@ -56,14 +65,16 @@ export function DashboardPage() {
   if (data?.products) {
     kpis.push({
       label: 'Inventory Value',
-      value: money(data.products.inventoryValue, true),
+      value: Number.parseFloat(data.products.inventoryValue) || 0,
+      format: inr,
       icon: 'account_balance_wallet',
       caption: 'Across catalogue',
       to: '/products',
     })
     kpis.push({
       label: 'Low Stock Alerts',
-      value: formatNumber(data.products.lowStock),
+      value: data.products.lowStock,
+      format: int,
       icon: 'warning',
       caption: 'At or below minimum',
       tone: 'error',
@@ -87,14 +98,19 @@ export function DashboardPage() {
         subtitle="Real-time overview across operations. Everything below is live from the API."
       />
 
-      <section className="grid grid-cols-1 gap-gutter sm:grid-cols-2 xl:grid-cols-3">
+      <Stagger className="grid grid-cols-1 gap-gutter sm:grid-cols-2 xl:grid-cols-3">
         {isLoading
           ? [0, 1, 2, 3, 4].map((i) => <KpiSkeleton key={i} />)
-          : kpis.map((k) => <StatCard key={k.label} kpi={k} />)}
-      </section>
+          : kpis.map((k) => (
+              <StaggerItem key={k.label}>
+                <StatCard kpi={k} />
+              </StaggerItem>
+            ))}
+      </Stagger>
 
       <div className="mt-6 grid grid-cols-1 gap-gutter lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <FadeIn delay={0.12} className="lg:col-span-2">
+        <Card>
           <div className="flex items-center justify-between px-5 pt-5">
             <h2 className="text-title-md font-medium text-on-surface">Recent activity</h2>
             {!showLedger && data?.recentChallans && (
@@ -156,7 +172,9 @@ export function DashboardPage() {
             )}
           </div>
         </Card>
+        </FadeIn>
 
+        <FadeIn delay={0.18}>
         <Card className="relative overflow-hidden">
           <div className="ai-glow pointer-events-none absolute inset-0" />
           <div className="relative flex items-center gap-2 px-5 pt-5">
@@ -192,6 +210,7 @@ export function DashboardPage() {
             </Link>
           </div>
         </Card>
+        </FadeIn>
       </div>
     </>
   )
@@ -203,23 +222,35 @@ function EmptyRow({ text }: { text: string }) {
 
 function StatCard({ kpi }: { kpi: Kpi }) {
   const body = (
-    <Card className="group relative flex min-h-[132px] flex-col justify-between overflow-hidden p-5 transition-colors hover:border-outline-variant/25">
-      <div className="flex items-start justify-between">
-        <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">{kpi.label}</span>
-        <span
-          className={cn(
-            'flex h-9 w-9 items-center justify-center rounded-lg bg-surface-container-highest',
-            kpi.tone === 'error' ? 'text-error' : 'text-on-surface-variant',
-          )}
-        >
-          <Icon name={kpi.icon} size={20} />
-        </span>
-      </div>
-      <p className="mt-2 text-headline-sm font-medium text-on-surface">{kpi.value}</p>
-      {kpi.caption && <p className="mt-1 text-body-sm text-on-surface-variant">{kpi.caption}</p>}
-    </Card>
+    <Pressable className="h-full">
+      <Card className="group relative flex h-full min-h-[132px] flex-col justify-between overflow-hidden p-5 transition-colors hover:border-outline-variant/25">
+        <div className="flex items-start justify-between">
+          <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">{kpi.label}</span>
+          <span
+            className={cn(
+              'flex h-9 w-9 items-center justify-center rounded-lg bg-surface-container-highest transition-transform duration-300 group-hover:scale-110',
+              kpi.tone === 'error' ? 'text-error' : 'text-on-surface-variant',
+            )}
+          >
+            <Icon name={kpi.icon} size={20} />
+          </span>
+        </div>
+        <CountUp
+          value={kpi.value}
+          format={kpi.format}
+          className="mt-2 text-headline-sm font-medium text-on-surface"
+        />
+        {kpi.caption && <p className="mt-1 text-body-sm text-on-surface-variant">{kpi.caption}</p>}
+      </Card>
+    </Pressable>
   )
-  return kpi.to ? <Link to={kpi.to}>{body}</Link> : body
+  return kpi.to ? (
+    <Link to={kpi.to} className="block h-full">
+      {body}
+    </Link>
+  ) : (
+    body
+  )
 }
 
 function KpiSkeleton() {
