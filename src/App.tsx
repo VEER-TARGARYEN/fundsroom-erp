@@ -32,6 +32,7 @@ const NotificationsPage = lazyPage(
 )
 const SettingsPage = lazyPage(() => import('@/features/settings/SettingsPage'), 'SettingsPage')
 const PaymentsPage = lazyPage(() => import('@/features/payments/PaymentsPage'), 'PaymentsPage')
+const PurchaseOrdersPage = lazyPage(() => import('@/features/purchasing/PurchaseOrdersPage'), 'PurchaseOrdersPage')
 const LandingPage = lazyPage(() => import('@/features/marketing/LandingPage'), 'LandingPage')
 const ChallanPrintPage = lazyPage(
   () => import('@/features/challans/ChallanPrintPage'),
@@ -112,6 +113,15 @@ export default function App() {
             element={
               <RequireRole roles={['ADMIN', 'SALES', 'ACCOUNTS']}>
                 <PaymentsPage />
+              </RequireRole>
+            }
+          />
+
+          <Route
+            path="purchase-orders"
+            element={
+              <RequireRole roles={['ADMIN', 'WAREHOUSE', 'ACCOUNTS']}>
+                <PurchaseOrdersPage />
               </RequireRole>
             }
           />
