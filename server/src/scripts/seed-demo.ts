@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { PrismaClient, Prisma, type ChallanStatus, type MovementType } from '@prisma/client'
+import { PrismaClient, Prisma, type ChallanStatus, type MovementType, type PaymentMethod } from '@prisma/client'
 import { CHALLAN_PREFIX, CHALLAN_SEQUENCE, GST_RATE } from '../constants/business'
 
 /**
@@ -94,6 +94,7 @@ async function main() {
 
   if (RESET) {
     console.log('   DEMO_RESET=true — clearing generated rows (starter seed preserved)')
+    await prisma.payment.deleteMany({})
     await prisma.challanItem.deleteMany({})
     await prisma.challan.deleteMany({})
     await prisma.stockLog.deleteMany({})
@@ -337,25 +338,78 @@ async function main() {
     )
   }
 
+  // ── payments ──────────────────────────────────────────────────────────────
+  // Receipts only make sense against confirmed challans. The spread is chosen so
+  // the aging report is actually interesting: most recent invoices settled, a
+  // long tail part-paid or untouched, so every bucket has something in it.
+  console.log('   generating payment history…')
+  const confirmed = await prisma.challan.findMany({
+    where: { status: 'CONFIRMED' },
+    select: { id: true, customerId: true, totalAmount: true, confirmedAt: true },
+  })
+
+  const paymentRows: Prisma.PaymentCreateManyInput[] = []
+  const METHODS: PaymentMethod[] = ['CASH', 'BANK_TRANSFER', 'UPI', 'CHEQUE', 'CARD', 'ADJUSTMENT']
+
+  for (const ch of confirmed) {
+    if (!ch.confirmedAt) continue
+    const ageDays = Math.floor((now - ch.confirmedAt.getTime()) / 86_400_000)
+    const total = new Prisma.Decimal(ch.totalAmount)
+
+    // Older invoices are likelier to be settled; recent ones often still open.
+    const settleChance = ageDays > 120 ? 0.9 : ageDays > 60 ? 0.7 : ageDays > 30 ? 0.5 : 0.25
+    const r = rnd()
+    if (r > settleChance + 0.18) continue // wholly unpaid
+
+    const partial = r > settleChance // paid something, but not all
+    const instalments = partial ? 1 : int(1, 3)
+    // Leave 15–65% outstanding on partials.
+    const target = partial ? total.mul(new Prisma.Decimal(1 - (0.15 + rnd() * 0.5))) : total
+
+    let booked = new Prisma.Decimal(0)
+    for (let k = 0; k < instalments; k++) {
+      const last = k === instalments - 1
+      const slice = last ? target.minus(booked) : target.div(instalments).mul(new Prisma.Decimal(0.9 + rnd() * 0.2))
+      const amount = new Prisma.Decimal(slice.toFixed(2))
+      if (amount.lte(0)) break
+      // Never exceed the invoice: the app enforces this transactionally, and
+      // seeded data must satisfy the same invariant or the ledger lies.
+      if (booked.plus(amount).gt(total)) break
+      booked = booked.plus(amount)
+
+      const offset = Math.min(ageDays, int(2, Math.max(3, Math.floor(ageDays * 0.8))) + k * int(5, 25))
+      paymentRows.push({
+        challanId: ch.id,
+        customerId: ch.customerId,
+        amount,
+        method: pick(METHODS),
+        reference: `${pick(['UTR', 'CHQ', 'UPI', 'REF'])}${int(100000, 999999)}`,
+        paidAt: new Date(ch.confirmedAt.getTime() + offset * 86_400_000),
+        createdById: pick(creatorIds),
+      })
+    }
+  }
+  await chunked(paymentRows, (c) => prisma.payment.createMany({ data: c, skipDuplicates: true }), 'payments')
+
   // Bulk-inserted tables have no planner statistics and an unset visibility
   // map, which blocks index-only scans — measured ~2x slower API responses
   // until this runs. Cheap, and autovacuum would otherwise take a while.
   console.log('   analyzing tables for the query planner…')
-  for (const t of ['challans', 'challan_items', 'stock_logs', 'products', 'customers']) {
+  for (const t of ['challans', 'challan_items', 'stock_logs', 'products', 'customers', 'payments']) {
     await prisma.$executeRawUnsafe(`VACUUM ANALYZE ${t}`)
   }
 
-  const [c, pr, ch, ci, sl] = await Promise.all([
+  const [c, pr, ch, ci, sl, pay] = await Promise.all([
     prisma.customer.count(), prisma.product.count(), prisma.challan.count(),
-    prisma.challanItem.count(), prisma.stockLog.count(),
+    prisma.challanItem.count(), prisma.stockLog.count(), prisma.payment.count(),
   ])
   const size = await prisma.$queryRawUnsafe<{ db: string }[]>(
     'SELECT pg_size_pretty(pg_database_size(current_database())) AS db',
   )
   console.log(
     `\n✅ Demo data ready in ${((Date.now() - t0) / 1000).toFixed(1)}s\n` +
-      `   customers ${c} · products ${pr} · challans ${ch} · items ${ci} · stock logs ${sl}\n` +
-      `   total rows ${c + pr + ch + ci + sl} · database size ${size[0]!.db}\n`,
+      `   customers ${c} · products ${pr} · challans ${ch} · items ${ci} · stock logs ${sl} · payments ${pay}\n` +
+      `   total rows ${c + pr + ch + ci + sl + pay} · database size ${size[0]!.db}\n`,
   )
 }
 

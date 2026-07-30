@@ -16,6 +16,7 @@ export const NAV: NavItem[] = [
   { label: 'Products', path: '/products', icon: 'inventory_2', roles: ['ADMIN', 'SALES', 'WAREHOUSE'], section: 'main' },
   { label: 'Inventory', path: '/inventory', icon: 'swap_vert', roles: ['ADMIN', 'WAREHOUSE'], section: 'main' },
   { label: 'Sales Challans', path: '/challans', icon: 'receipt_long', roles: ['ADMIN', 'SALES', 'ACCOUNTS'], section: 'main' },
+  { label: 'Receivables', path: '/payments', icon: 'account_balance_wallet', roles: ['ADMIN', 'SALES', 'ACCOUNTS'], section: 'main' },
 
   { label: 'AI Assistant', path: '/ai', icon: 'auto_awesome', roles: ['ADMIN', 'SALES', 'ACCOUNTS'], section: 'ai' },
 

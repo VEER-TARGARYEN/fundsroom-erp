@@ -6,6 +6,7 @@ import {
   confirmChallan,
   cancelChallan,
 } from '../controllers/challan.controller'
+import { challanPaymentSummary } from '../controllers/payment.controller'
 import { authenticate, checkRole } from '../middleware/auth'
 import { validate } from '../middleware/validate'
 import { idParamSchema } from '../schemas/common.schema'
@@ -54,6 +55,18 @@ router
  *     responses: { 200: { description: The challan }, 404: { description: Not found } }
  */
 router.get('/:id', validate({ params: idParamSchema }), getChallan)
+
+/**
+ * @openapi
+ * /challans/{id}/payment-summary:
+ *   get:
+ *     tags: [Payments]
+ *     summary: Paid and outstanding for one challan, with its receipts
+ *     responses:
+ *       200: { description: Payment summary }
+ *       404: { description: Challan not found }
+ */
+router.get('/:id/payment-summary', validate({ params: idParamSchema }), challanPaymentSummary)
 
 /**
  * @openapi

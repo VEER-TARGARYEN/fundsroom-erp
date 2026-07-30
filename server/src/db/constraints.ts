@@ -35,8 +35,52 @@ export async function ensureDatabaseConstraints(): Promise<void> {
 
   await ensureNotificationsTable()
   await ensureGoogleAccountsTable()
+  await ensurePaymentsTable()
 
   logger.info('Database constraints & sequences ensured')
+}
+
+/**
+ * Receipts against confirmed challans. Idempotent.
+ *
+ * `amount > 0` is a CHECK rather than only a Zod rule: a negative receipt would
+ * silently inflate what a customer still owes, and refunds are modelled as their
+ * own ADJUSTMENT rows instead. The "payments never exceed the challan total"
+ * invariant can't be expressed as a CHECK (it spans rows), so it's enforced
+ * transactionally in payment.service.ts.
+ */
+async function ensurePaymentsTable(): Promise<void> {
+  await prisma.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'PaymentMethod') THEN
+        CREATE TYPE "PaymentMethod" AS ENUM
+          ('CASH', 'BANK_TRANSFER', 'UPI', 'CHEQUE', 'CARD', 'ADJUSTMENT');
+      END IF;
+    END $$;
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "payments" (
+      "id"            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      "challan_id"    UUID NOT NULL REFERENCES "challans"("id") ON DELETE CASCADE,
+      "customer_id"   UUID NOT NULL REFERENCES "customers"("id") ON DELETE RESTRICT,
+      "amount"        DECIMAL(14,2) NOT NULL,
+      "method"        "PaymentMethod" NOT NULL DEFAULT 'BANK_TRANSFER',
+      "reference"     TEXT,
+      "note"          TEXT,
+      "paid_at"       TIMESTAMP(3) NOT NULL,
+      "created_by_id" UUID NOT NULL REFERENCES "users"("id") ON DELETE RESTRICT,
+      "created_at"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT payments_amount_positive CHECK ("amount" > 0)
+    );
+  `)
+
+  for (const col of ['challan_id', 'customer_id', 'paid_at']) {
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "payments_${col}_idx" ON "payments" ("${col}");`,
+    )
+  }
 }
 
 /** Linked Google identities + encrypted Workspace tokens. Idempotent. */

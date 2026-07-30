@@ -82,6 +82,7 @@ model User {
 
   stockLogs     StockLog[]
   challans      Challan[]      @relation("ChallanCreatedBy")
+  payments      Payment[]      @relation("PaymentCreatedBy")
   googleAccount GoogleAccount?
 
   @@index([role])
@@ -110,6 +111,7 @@ model Customer {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   challans Challan[]
+  payments Payment[]
 
   @@index([status])
   @@index([businessName])
@@ -170,7 +172,8 @@ model Challan {
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
-  items ChallanItem[]
+  items    ChallanItem[]
+  payments Payment[]
 
   @@index([customerId])
   @@index([status])
@@ -255,4 +258,48 @@ model GoogleAccount {
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@map("google_accounts")
+}
+
+/** How a receipt reached us. ADJUSTMENT covers write-offs and credit notes. */
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  UPI
+  CHEQUE
+  CARD
+  ADJUSTMENT
+}
+
+/**
+ * A receipt against a confirmed challan.
+ *
+ * Part-payments are the norm in wholesale, so a challan has many payments and
+ * the outstanding balance is `totalAmount - SUM(payments)`. That sum is never
+ * cached on the challan: a stored balance and a payment row can disagree after a
+ * failure, whereas a derived one cannot. The invariant that the sum may not
+ * exceed the challan total is enforced in a transaction (see payment.service).
+ *
+ * `customerId` is denormalised from the challan so per-customer receivables and
+ * aging don't need a join through challans on every query.
+ */
+model Payment {
+  id          String        @id @default(uuid()) @db.Uuid
+  challanId   String        @map("challan_id") @db.Uuid
+  challan     Challan       @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  customerId  String        @map("customer_id") @db.Uuid
+  customer    Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  amount      Decimal       @db.Decimal(14, 2)
+  method      PaymentMethod @default(BANK_TRANSFER)
+  /** UTR, cheque number, UPI reference — whatever identifies it on a statement. */
+  reference   String?
+  note        String?
+  paidAt      DateTime      @map("paid_at")
+  createdById String        @map("created_by_id") @db.Uuid
+  createdBy   User          @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  @@index([challanId])
+  @@index([customerId])
+  @@index([paidAt])
+  @@map("payments")
 }
