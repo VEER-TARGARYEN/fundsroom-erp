@@ -9,6 +9,12 @@ dist-ssr
 .env.*
 !.env.example
 
+# Private operations runbook — holds live credentials. This repository is
+# PUBLIC, so these patterns must stay above any doc glob that might catch them.
+PRIVATE-RUNBOOK.md
+*.private.md
+secrets/
+
 # Build artifacts
 *.tsbuildinfo
 
