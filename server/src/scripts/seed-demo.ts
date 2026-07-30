@@ -1,6 +1,14 @@
 import 'dotenv/config'
 import { PrismaClient, Prisma, type ChallanStatus, type MovementType, type PaymentMethod } from '@prisma/client'
-import { CHALLAN_PREFIX, CHALLAN_SEQUENCE, GST_RATE } from '../constants/business'
+import {
+  CHALLAN_PREFIX,
+  CHALLAN_SEQUENCE,
+  GST_RATE,
+  PO_PREFIX,
+  PO_SEQUENCE,
+  GRN_PREFIX,
+  GRN_SEQUENCE,
+} from '../constants/business'
 
 /**
  * Bulk demo-data generator — turns the 3-customer starter seed into a dataset
@@ -94,6 +102,11 @@ async function main() {
 
   if (RESET) {
     console.log('   DEMO_RESET=true — clearing generated rows (starter seed preserved)')
+    await prisma.goodsReceiptItem.deleteMany({})
+    await prisma.goodsReceipt.deleteMany({})
+    await prisma.purchaseOrderItem.deleteMany({})
+    await prisma.purchaseOrder.deleteMany({})
+    await prisma.supplier.deleteMany({})
     await prisma.payment.deleteMany({})
     await prisma.challanItem.deleteMany({})
     await prisma.challan.deleteMany({})
@@ -101,6 +114,8 @@ async function main() {
     await prisma.product.deleteMany({ where: { sku: { notIn: KEEP_SKUS } } })
     await prisma.customer.deleteMany({ where: { businessName: { notIn: KEEP_BUSINESSES } } })
     await prisma.$executeRawUnsafe(`SELECT setval('${CHALLAN_SEQUENCE}', 1, false)`)
+    await prisma.$executeRawUnsafe(`SELECT setval('${PO_SEQUENCE}', 1, false)`)
+    await prisma.$executeRawUnsafe(`SELECT setval('${GRN_SEQUENCE}', 1, false)`)
   }
 
   const users = await prisma.user.findMany({ select: { id: true, role: true } })
@@ -185,7 +200,7 @@ async function main() {
   // ── challans + items + stock ledger ───────────────────────────────────────
   const customers = await prisma.customer.findMany({ select: { id: true } })
   const products = await prisma.product.findMany({
-    select: { id: true, unitPrice: true, stockQuantity: true, minStock: true },
+    select: { id: true, sku: true, name: true, unitPrice: true, stockQuantity: true, minStock: true },
   })
 
   // Reserve a contiguous block of challan numbers, then leave the sequence
@@ -277,31 +292,30 @@ async function main() {
     it.skuSnapshot = meta.sku
   }
 
-  // Restocking history — also guarantees the CHECK (stock_quantity >= 0) holds
-  // once the ledger is applied to current stock.
+  /**
+   * Target closing stock per product, with deliberate spread so the demo has
+   * stockouts and low-stock SKUs to alert on: ~6% at zero, ~14% at or below
+   * minimum, the rest healthy.
+   */
+  const targetStock = new Map<string, number>()
   for (const p of products) {
-    const consumed = -(netByProduct.get(p.id) ?? 0)
-    if (consumed <= 0) continue
-    let remaining = consumed + int(0, p.minStock * 2)
-    while (remaining > 0) {
-      const qty = Math.min(remaining, int(50, 600))
-      remaining -= qty
-      netByProduct.set(p.id, (netByProduct.get(p.id) ?? 0) + qty)
-      logRows.push({
-        productId: p.id,
-        quantityChange: qty,
-        movementType: 'PURCHASE_IN' as MovementType,
-        reason: pick(['Supplier restock — PO', 'Quarterly replenishment', 'Bulk purchase inward', 'Vendor delivery received']),
-        userId: pick(actorIds),
-        createdAt: new Date(now - int(1, SPAN_DAYS) * 86_400_000),
-      })
-    }
+    const r = rnd()
+    targetStock.set(
+      p.id,
+      r < 0.06 ? 0 : r < 0.2 ? int(0, p.minStock) : int(p.minStock + 1, p.minStock * 8),
+    )
   }
-  // A few manual corrections for movement-type variety.
+
+  // A few manual corrections for movement-type variety. Bounded so the closing
+  // balance can never be driven below zero once everything is applied.
+  const adjustByProduct = new Map<string, number>()
   for (let i = 0; i < Math.max(20, Math.floor(N_CHALLANS * 0.02)); i++) {
     const p = pick(products)
     const delta = int(1, 25) * (rnd() < 0.5 ? -1 : 1)
-    if ((netByProduct.get(p.id) ?? 0) + delta < -p.stockQuantity) continue
+    const target = targetStock.get(p.id)!
+    const already = adjustByProduct.get(p.id) ?? 0
+    if (target + already + delta < 0) continue
+    adjustByProduct.set(p.id, already + delta)
     netByProduct.set(p.id, (netByProduct.get(p.id) ?? 0) + delta)
     logRows.push({
       productId: p.id,
@@ -312,6 +326,257 @@ async function main() {
       createdAt: new Date(now - int(1, SPAN_DAYS) * 86_400_000),
     })
   }
+
+  // ── purchasing ────────────────────────────────────────────────────────────
+  /**
+   * Suppliers, purchase orders and goods receipts.
+   *
+   * This block replaces a loop that invented PURCHASE_IN rows out of nothing —
+   * 2,018 of them literally read "Supplier restock — PO" for an order that had
+   * never existed. Every inbound movement now originates from a goods receipt
+   * against a real purchase order, so "where did this stock come from?" has an
+   * answer for every unit.
+   *
+   * Opening stock is therefore ZERO. Closing stock is purely the sum of the
+   * ledger, which is what makes the whole dataset internally consistent:
+   *
+   *   received − sold + adjusted = closing stock
+   *
+   * Solving that for what must have been bought:
+   *
+   *   purchases = target closing + consumed − adjustments
+   */
+  console.log('   generating suppliers, purchase orders and goods receipts…')
+
+  const SUPPLIER_A = ['Meridian', 'Anchor', 'Vertex', 'Summit', 'Orbit', 'Cascade', 'Ironwood', 'Blue Ridge', 'Northstar', 'Kinetic']
+  const SUPPLIER_B = ['Trading', 'Imports', 'Distribution', 'Supply Co', 'Industries', 'Logistics', 'Sourcing', 'Wholesale']
+
+  const supplierRows: Prisma.SupplierCreateManyInput[] = []
+  const supplierIds: string[] = []
+  const usedSupplier = new Set<string>()
+  for (let i = 0; supplierRows.length < 40 && i < 400; i++) {
+    const name = `${pick(SUPPLIER_A)} ${pick(SUPPLIER_B)}`
+    if (usedSupplier.has(name)) continue
+    usedSupplier.add(name)
+    const [city, state, pin] = pick(CITIES)
+    const id = crypto.randomUUID()
+    supplierIds.push(id)
+    supplierRows.push({
+      id,
+      name,
+      contactPerson: `${pick(FIRST)} ${pick(LAST)}`,
+      mobile: `${pick(['9', '8', '7'])}${int(100000000, 999999999)}`.slice(0, 10),
+      email: `purchasing@${name.toLowerCase().replace(/[^a-z0-9]+/g, '')}.in`,
+      gstin: `${pick(GST_STATE)}${name.slice(0, 5).toUpperCase().replace(/[^A-Z]/g, 'A').padEnd(5, 'A')}${int(1000, 9999)}${pick(['F', 'L', 'M'])}1Z${int(0, 9)}`,
+      paymentTermsDays: pick([15, 30, 30, 45, 60]),
+      addressLine1: `${int(1, 300)} ${pick(['Industrial Estate', 'Trade Centre', 'Export Zone', 'Godown Road'])}`,
+      city,
+      state,
+      pincode: `${pin}${int(10, 99)}`,
+    })
+  }
+  await chunked(supplierRows, (c) => prisma.supplier.createMany({ data: c, skipDuplicates: true }), 'suppliers')
+
+  /** One delivery of a product: how much arrived, and roughly when. */
+  interface Chunk {
+    productId: string
+    received: number
+    daysAgo: number
+  }
+
+  const chunks: Chunk[] = []
+  for (const p of products) {
+    const consumed = -Math.min(0, (netByProduct.get(p.id) ?? 0) - (adjustByProduct.get(p.id) ?? 0))
+    const purchases = targetStock.get(p.id)! + consumed - (adjustByProduct.get(p.id) ?? 0)
+    if (purchases <= 0) continue
+
+    // Split into 1–4 deliveries so a product has a purchase history, not one
+    // giant mystery inbound.
+    const n = int(1, 4)
+    let left = purchases
+    for (let k = 0; k < n && left > 0; k++) {
+      const qty = k === n - 1 ? left : Math.max(1, Math.round(left / (n - k)) + int(-20, 20))
+      const take = Math.min(left, Math.max(1, qty))
+      left -= take
+      chunks.push({ productId: p.id, received: take, daysAgo: int(30, SPAN_DAYS) })
+    }
+  }
+
+  const poRows: Prisma.PurchaseOrderCreateManyInput[] = []
+  const poItemRows: Prisma.PurchaseOrderItemCreateManyInput[] = []
+  const grnRows: Prisma.GoodsReceiptCreateManyInput[] = []
+  const grnItemRows: Prisma.GoodsReceiptItemCreateManyInput[] = []
+
+  const productMetaById = new Map(products.map((p) => [p.id, p]))
+  const costOf = (unitPrice: Prisma.Decimal) =>
+    // Suppliers sell to us below our sale price — 55–75% is a plausible margin.
+    new Prisma.Decimal(unitPrice.mul(0.55 + rnd() * 0.2).toFixed(2))
+
+  // Group deliveries into multi-line orders, newest-first so PO numbers ascend
+  // with time the way a real sequence would.
+  chunks.sort((a, b) => b.daysAgo - a.daysAgo)
+  let poSeq = 0
+  let grnSeq = 0
+
+  for (let i = 0; i < chunks.length; ) {
+    const lineCount = Math.min(int(2, 7), chunks.length - i)
+    const group = chunks.slice(i, i + lineCount)
+    i += lineCount
+
+    const daysAgo = group[0]!.daysAgo
+    const orderedAt = new Date(now - daysAgo * 86_400_000)
+    const year = orderedAt.getFullYear()
+    const poId = crypto.randomUUID()
+    poSeq++
+
+    // One line per product (the unique (po, product) index), so two deliveries
+    // of the same SKU landing in one group must be SUMMED. Dropping the
+    // duplicate would silently lose those units from the ledger while the stock
+    // target still counted them — which is exactly what the closing balance
+    // assertion caught.
+    const merged = new Map<string, number>()
+    for (const g of group) merged.set(g.productId, (merged.get(g.productId) ?? 0) + g.received)
+    const lines = [...merged.entries()].map(([productId, received]) => ({ productId, received }))
+    if (lines.length === 0) continue
+
+    // ~18% of delivered orders were short-shipped: more was ordered than came.
+    const shortShipped = rnd() < 0.18
+    let subtotal = new Prisma.Decimal(0)
+    const itemsForReceipt: { itemId: string; productId: string; received: number }[] = []
+
+    for (const line of lines) {
+      const meta = productMetaById.get(line.productId)!
+      const unitCost = costOf(meta.unitPrice as unknown as Prisma.Decimal)
+      const ordered = shortShipped && rnd() < 0.6 ? line.received + int(1, 40) : line.received
+      const itemId = crypto.randomUUID()
+
+      poItemRows.push({
+        id: itemId,
+        purchaseOrderId: poId,
+        productId: line.productId,
+        productNameSnapshot: meta.name,
+        skuSnapshot: meta.sku,
+        unitCost,
+        orderedQuantity: ordered,
+        receivedQuantity: line.received,
+        lineTotal: unitCost.mul(ordered),
+      })
+      subtotal = subtotal.add(unitCost.mul(ordered))
+      itemsForReceipt.push({ itemId, productId: line.productId, received: line.received })
+    }
+
+    const anyOutstanding = poItemRows
+      .slice(-lines.length)
+      .some((it) => (it.receivedQuantity as number) < (it.orderedQuantity as number))
+    const taxAmount = subtotal.mul(GST_RATE).toDecimalPlaces(2)
+    const receivedAt = new Date(orderedAt.getTime() + int(2, 21) * 86_400_000)
+
+    poRows.push({
+      id: poId,
+      poNumber: `${PO_PREFIX}-${year}-${String(poSeq).padStart(5, '0')}`,
+      supplierId: pick(supplierIds),
+      status: anyOutstanding ? 'PARTIALLY_RECEIVED' : 'RECEIVED',
+      subtotal,
+      taxAmount,
+      totalAmount: subtotal.add(taxAmount),
+      expectedDate: new Date(orderedAt.getTime() + int(5, 30) * 86_400_000),
+      createdById: pick(creatorIds),
+      sentAt: orderedAt,
+      closedAt: anyOutstanding ? null : receivedAt,
+      createdAt: orderedAt,
+      updatedAt: receivedAt,
+    })
+
+    const grnId = crypto.randomUUID()
+    grnSeq++
+    grnRows.push({
+      id: grnId,
+      receiptNumber: `${GRN_PREFIX}-${receivedAt.getFullYear()}-${String(grnSeq).padStart(5, '0')}`,
+      purchaseOrderId: poId,
+      supplierRef: `${pick(['DC', 'INV', 'DN'])}-${int(10000, 99999)}`,
+      receivedAt,
+      receivedById: pick(actorIds),
+    })
+
+    const poNumber = poRows[poRows.length - 1]!.poNumber
+    const supplierName = supplierRows.find((s) => s.id === poRows[poRows.length - 1]!.supplierId)?.name ?? 'Supplier'
+    const reason = `${grnRows[grnRows.length - 1]!.receiptNumber} · PO #${poNumber} — ${supplierName}`
+
+    for (const it of itemsForReceipt) {
+      grnItemRows.push({
+        goodsReceiptId: grnId,
+        purchaseOrderItemId: it.itemId,
+        productId: it.productId,
+        quantityReceived: it.received,
+      })
+      // The inbound movement, now traceable to a document.
+      netByProduct.set(it.productId, (netByProduct.get(it.productId) ?? 0) + it.received)
+      logRows.push({
+        productId: it.productId,
+        quantityChange: it.received,
+        movementType: 'PURCHASE_IN' as MovementType,
+        reason,
+        userId: grnRows[grnRows.length - 1]!.receivedById as string,
+        createdAt: receivedAt,
+      })
+    }
+  }
+
+  // A tail of orders still in flight — nothing received, so they move no stock
+  // but give the purchasing screen realistic open work.
+  for (let k = 0; k < 24; k++) {
+    const daysAgo = int(1, 40)
+    const orderedAt = new Date(now - daysAgo * 86_400_000)
+    const poId = crypto.randomUUID()
+    poSeq++
+    const draft = rnd() < 0.35
+
+    const picks = new Set<string>()
+    while (picks.size < int(2, 5)) picks.add(pick(products).id)
+
+    let subtotal = new Prisma.Decimal(0)
+    for (const pid of picks) {
+      const meta = productMetaById.get(pid)!
+      const unitCost = costOf(meta.unitPrice as unknown as Prisma.Decimal)
+      const ordered = int(20, 400)
+      poItemRows.push({
+        purchaseOrderId: poId,
+        productId: pid,
+        productNameSnapshot: meta.name,
+        skuSnapshot: meta.sku,
+        unitCost,
+        orderedQuantity: ordered,
+        receivedQuantity: 0,
+        lineTotal: unitCost.mul(ordered),
+      })
+      subtotal = subtotal.add(unitCost.mul(ordered))
+    }
+    const taxAmount = subtotal.mul(GST_RATE).toDecimalPlaces(2)
+    poRows.push({
+      id: poId,
+      poNumber: `${PO_PREFIX}-${orderedAt.getFullYear()}-${String(poSeq).padStart(5, '0')}`,
+      supplierId: pick(supplierIds),
+      status: draft ? 'DRAFT' : 'SENT',
+      subtotal,
+      taxAmount,
+      totalAmount: subtotal.add(taxAmount),
+      // Some expected dates are already in the past → overdue orders to chase.
+      expectedDate: new Date(orderedAt.getTime() + int(5, 45) * 86_400_000),
+      createdById: pick(creatorIds),
+      sentAt: draft ? null : orderedAt,
+      createdAt: orderedAt,
+      updatedAt: orderedAt,
+    })
+  }
+
+  await chunked(poRows, (c) => prisma.purchaseOrder.createMany({ data: c, skipDuplicates: true }), 'purchase orders')
+  await chunked(poItemRows, (c) => prisma.purchaseOrderItem.createMany({ data: c, skipDuplicates: true }), 'PO lines')
+  await chunked(grnRows, (c) => prisma.goodsReceipt.createMany({ data: c, skipDuplicates: true }), 'goods receipts')
+  await chunked(grnItemRows, (c) => prisma.goodsReceiptItem.createMany({ data: c, skipDuplicates: true }), 'receipt lines')
+
+  // Leave both sequences beyond everything just written.
+  await prisma.$executeRawUnsafe(`SELECT setval('${PO_SEQUENCE}', ${poSeq + 1})`)
+  await prisma.$executeRawUnsafe(`SELECT setval('${GRN_SEQUENCE}', ${grnSeq + 1})`)
 
   await chunked(challanRows, (c) => prisma.challan.createMany({ data: c, skipDuplicates: true }), 'challans')
   await chunked(itemRows, (c) => prisma.challanItem.createMany({ data: c, skipDuplicates: true }), 'challan items')
@@ -324,10 +589,26 @@ async function main() {
   // Done as one bulk UPDATE ... FROM (VALUES ...) rather than a query per
   // product — on a remote instance that is the difference between a few
   // hundred round-trips and one.
-  console.log('   reconciling stock levels with the ledger…')
-  const adjusted = products
-    .map((p) => ({ id: p.id, qty: Math.max(0, p.stockQuantity + (netByProduct.get(p.id) ?? 0)) }))
-    .filter((p) => netByProduct.has(p.id))
+  // Opening stock is zero and every unit arrived through a goods receipt, so
+  // closing stock IS the ledger sum — not a starting figure adjusted by it.
+  // That is what makes `SUM(stock_logs.quantity_change) == SUM(products.stock_quantity)`
+  // hold exactly, and it is asserted below before the script exits.
+  console.log('   deriving stock levels from the ledger…')
+  // No clamping: by construction purchases = target + consumed - adjustments, so
+  // every closing balance is already non-negative. Clamping here would paper
+  // over a generation bug by inflating stock above what the ledger explains —
+  // fail instead, so the dataset can never quietly become incoherent.
+  const negative = products.filter((p) => (netByProduct.get(p.id) ?? 0) < 0)
+  if (negative.length > 0) {
+    const worst = negative
+      .map((p) => `${p.sku} ${netByProduct.get(p.id)}`)
+      .slice(0, 5)
+      .join(', ')
+    throw new Error(
+      `${negative.length} product(s) would close with negative stock — generation is inconsistent: ${worst}`,
+    )
+  }
+  const adjusted = products.map((p) => ({ id: p.id, qty: netByProduct.get(p.id) ?? 0 }))
   for (let i = 0; i < adjusted.length; i += BATCH) {
     const slice = adjusted.slice(i, i + BATCH)
     const values = slice.map((p) => `('${p.id}'::uuid, ${p.qty})`).join(',')
@@ -395,22 +676,57 @@ async function main() {
   // map, which blocks index-only scans — measured ~2x slower API responses
   // until this runs. Cheap, and autovacuum would otherwise take a while.
   console.log('   analyzing tables for the query planner…')
-  for (const t of ['challans', 'challan_items', 'stock_logs', 'products', 'customers', 'payments']) {
+  for (const t of ['challans', 'challan_items', 'stock_logs', 'products', 'customers', 'payments', 'suppliers', 'purchase_orders', 'purchase_order_items', 'goods_receipts', 'goods_receipt_items']) {
     await prisma.$executeRawUnsafe(`VACUUM ANALYZE ${t}`)
   }
 
-  const [c, pr, ch, ci, sl, pay] = await Promise.all([
+  const [c, pr, ch, ci, sl, pay, sup, po, poi, grn, grni] = await Promise.all([
     prisma.customer.count(), prisma.product.count(), prisma.challan.count(),
     prisma.challanItem.count(), prisma.stockLog.count(), prisma.payment.count(),
+    prisma.supplier.count(), prisma.purchaseOrder.count(), prisma.purchaseOrderItem.count(),
+    prisma.goodsReceipt.count(), prisma.goodsReceiptItem.count(),
   ])
+
+  /**
+   * Assert the ledger actually explains the stock on hand.
+   *
+   * The point of sourcing every inbound movement from a goods receipt is that
+   * closing stock becomes fully derivable. If these two figures ever diverge,
+   * the generated dataset is lying about where its stock came from — so fail
+   * loudly rather than quietly shipping an incoherent demo.
+   */
+  const balance = await prisma.$queryRawUnsafe<{ ledger: number; stock: number; orphans: number }[]>(`
+    SELECT (SELECT COALESCE(SUM(quantity_change), 0)::int FROM stock_logs)  AS ledger,
+           (SELECT COALESCE(SUM(stock_quantity), 0)::int  FROM products)    AS stock,
+           (SELECT COUNT(*)::int FROM stock_logs
+             WHERE movement_type = 'PURCHASE_IN' AND reason NOT LIKE 'GRN-%') AS orphans`)
+  const { ledger, stock, orphans } = balance[0]!
+
   const size = await prisma.$queryRawUnsafe<{ db: string }[]>(
     'SELECT pg_size_pretty(pg_database_size(current_database())) AS db',
   )
+
+  const total = c + pr + ch + ci + sl + pay + sup + po + poi + grn + grni
   console.log(
     `\n✅ Demo data ready in ${((Date.now() - t0) / 1000).toFixed(1)}s\n` +
       `   customers ${c} · products ${pr} · challans ${ch} · items ${ci} · stock logs ${sl} · payments ${pay}\n` +
-      `   total rows ${c + pr + ch + ci + sl + pay} · database size ${size[0]!.db}\n`,
+      `   suppliers ${sup} · purchase orders ${po} · PO lines ${poi} · receipts ${grn} · receipt lines ${grni}\n` +
+      `   total rows ${total} · database size ${size[0]!.db}\n`,
   )
+  console.log(
+    `   ledger net ${ledger.toLocaleString()} · stock on hand ${stock.toLocaleString()} · ` +
+      `untraceable PURCHASE_IN ${orphans}`,
+  )
+
+  if (ledger !== stock) {
+    throw new Error(
+      `Ledger does not explain stock: SUM(stock_logs) = ${ledger} but SUM(products.stock_quantity) = ${stock}`,
+    )
+  }
+  if (orphans !== 0) {
+    throw new Error(`${orphans} PURCHASE_IN movements are not traceable to a goods receipt`)
+  }
+  console.log('   ✓ every unit on hand traces to a goods receipt\n')
 }
 
 main()
