@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma'
-import { CHALLAN_SEQUENCE } from '../constants/business'
+import { CHALLAN_SEQUENCE, PO_SEQUENCE, GRN_SEQUENCE } from '../constants/business'
 import { logger } from '../config/logger'
 
 /**
@@ -33,11 +33,154 @@ export async function ensureDatabaseConstraints(): Promise<void> {
     `CREATE SEQUENCE IF NOT EXISTS "${CHALLAN_SEQUENCE}" START WITH 1 INCREMENT BY 1;`,
   )
 
+  await prisma.$executeRawUnsafe(
+    `CREATE SEQUENCE IF NOT EXISTS "${PO_SEQUENCE}" START WITH 1 INCREMENT BY 1;`,
+  )
+  await prisma.$executeRawUnsafe(
+    `CREATE SEQUENCE IF NOT EXISTS "${GRN_SEQUENCE}" START WITH 1 INCREMENT BY 1;`,
+  )
+
   await ensureNotificationsTable()
   await ensureGoogleAccountsTable()
   await ensurePaymentsTable()
+  await ensurePurchasingTables()
 
   logger.info('Database constraints & sequences ensured')
+}
+
+/**
+ * Purchasing: suppliers, purchase orders, and goods receipts. Idempotent.
+ *
+ * Two CHECK constraints encode invariants the application also enforces, so a
+ * bug or a direct SQL edit still cannot corrupt the ledger:
+ *
+ *   • `ordered_quantity > 0` and `received_quantity >= 0` — a zero-quantity
+ *     order line is meaningless, and a negative receipt would silently reduce
+ *     stock through a path that claims to be an inflow.
+ *   • `received_quantity <= ordered_quantity` — the over-receipt invariant.
+ *     Unlike the payments equivalent this one CAN be a CHECK, because the
+ *     running total is denormalised onto the same row. That makes it a true
+ *     backstop: even if the service logic were bypassed, Postgres rejects the
+ *     write. The transactional guard in purchaseOrder.service.ts still exists
+ *     to produce a good error message rather than a raw constraint violation.
+ */
+async function ensurePurchasingTables(): Promise<void> {
+  await prisma.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'PurchaseOrderStatus') THEN
+        CREATE TYPE "PurchaseOrderStatus" AS ENUM
+          ('DRAFT', 'SENT', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED');
+      END IF;
+    END $$;
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "suppliers" (
+      "id"                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      "name"               TEXT NOT NULL,
+      "contact_person"     TEXT NOT NULL,
+      "mobile"             TEXT NOT NULL,
+      "email"              TEXT,
+      "gstin"              VARCHAR(15),
+      "payment_terms_days" INTEGER NOT NULL DEFAULT 30,
+      "is_active"          BOOLEAN NOT NULL DEFAULT true,
+      "notes"              TEXT,
+      "address_line1"      TEXT,
+      "city"               TEXT,
+      "state"              TEXT,
+      "pincode"            VARCHAR(10),
+      "created_at"         TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updated_at"         TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT suppliers_terms_nonneg CHECK ("payment_terms_days" >= 0)
+    );
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "purchase_orders" (
+      "id"            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      "po_number"     TEXT NOT NULL UNIQUE,
+      "supplier_id"   UUID NOT NULL REFERENCES "suppliers"("id") ON DELETE RESTRICT,
+      "status"        "PurchaseOrderStatus" NOT NULL DEFAULT 'DRAFT',
+      "subtotal"      DECIMAL(14,2) NOT NULL DEFAULT 0,
+      "tax_amount"    DECIMAL(14,2) NOT NULL DEFAULT 0,
+      "total_amount"  DECIMAL(14,2) NOT NULL DEFAULT 0,
+      "expected_date" DATE,
+      "notes"         TEXT,
+      "created_by_id" UUID NOT NULL REFERENCES "users"("id") ON DELETE RESTRICT,
+      "sent_at"       TIMESTAMP(3),
+      "closed_at"     TIMESTAMP(3),
+      "created_at"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updated_at"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "purchase_order_items" (
+      "id"                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      "purchase_order_id"     UUID NOT NULL REFERENCES "purchase_orders"("id") ON DELETE CASCADE,
+      "product_id"            UUID NOT NULL REFERENCES "products"("id") ON DELETE RESTRICT,
+      "product_name_snapshot" TEXT NOT NULL,
+      "sku_snapshot"          TEXT NOT NULL,
+      "unit_cost"             DECIMAL(12,2) NOT NULL,
+      "ordered_quantity"      INTEGER NOT NULL,
+      "received_quantity"     INTEGER NOT NULL DEFAULT 0,
+      "line_total"            DECIMAL(14,2) NOT NULL,
+      CONSTRAINT po_items_ordered_positive  CHECK ("ordered_quantity" > 0),
+      CONSTRAINT po_items_received_nonneg   CHECK ("received_quantity" >= 0),
+      CONSTRAINT po_items_no_over_receipt   CHECK ("received_quantity" <= "ordered_quantity")
+    );
+  `)
+  await prisma.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "purchase_order_items_po_product_key"
+       ON "purchase_order_items" ("purchase_order_id", "product_id");`,
+  )
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "goods_receipts" (
+      "id"                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      "receipt_number"    TEXT NOT NULL UNIQUE,
+      "purchase_order_id" UUID NOT NULL REFERENCES "purchase_orders"("id") ON DELETE CASCADE,
+      "supplier_ref"      TEXT,
+      "notes"             TEXT,
+      "received_at"       TIMESTAMP(3) NOT NULL,
+      "received_by_id"    UUID NOT NULL REFERENCES "users"("id") ON DELETE RESTRICT,
+      "created_at"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "goods_receipt_items" (
+      "id"                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      "goods_receipt_id"       UUID NOT NULL REFERENCES "goods_receipts"("id") ON DELETE CASCADE,
+      "purchase_order_item_id" UUID NOT NULL REFERENCES "purchase_order_items"("id") ON DELETE RESTRICT,
+      "product_id"             UUID NOT NULL REFERENCES "products"("id") ON DELETE RESTRICT,
+      "quantity_received"      INTEGER NOT NULL,
+      CONSTRAINT grn_items_qty_positive CHECK ("quantity_received" > 0)
+    );
+  `)
+
+  const indexes: [string, string, string][] = [
+    ['suppliers_name_idx', 'suppliers', 'name'],
+    ['suppliers_is_active_idx', 'suppliers', 'is_active'],
+    ['purchase_orders_supplier_id_idx', 'purchase_orders', 'supplier_id'],
+    ['purchase_orders_status_idx', 'purchase_orders', 'status'],
+    ['purchase_orders_created_by_id_idx', 'purchase_orders', 'created_by_id'],
+    ['purchase_orders_created_at_idx', 'purchase_orders', 'created_at'],
+    ['purchase_orders_expected_date_idx', 'purchase_orders', 'expected_date'],
+    ['purchase_order_items_purchase_order_id_idx', 'purchase_order_items', 'purchase_order_id'],
+    ['purchase_order_items_product_id_idx', 'purchase_order_items', 'product_id'],
+    ['goods_receipts_purchase_order_id_idx', 'goods_receipts', 'purchase_order_id'],
+    ['goods_receipts_received_at_idx', 'goods_receipts', 'received_at'],
+    ['goods_receipt_items_goods_receipt_id_idx', 'goods_receipt_items', 'goods_receipt_id'],
+    ['goods_receipt_items_purchase_order_item_id_idx', 'goods_receipt_items', 'purchase_order_item_id'],
+    ['goods_receipt_items_product_id_idx', 'goods_receipt_items', 'product_id'],
+  ]
+  for (const [name, tbl, col] of indexes) {
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "${name}" ON "${tbl}" ("${col}");`,
+    )
+  }
 }
 
 /**

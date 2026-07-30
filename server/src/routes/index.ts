@@ -10,6 +10,8 @@ import notificationRoutes from './notification.routes'
 import agentRoutes from './agent.routes'
 import workspaceRoutes from './workspace.routes'
 import paymentRoutes from './payment.routes'
+import supplierRoutes from './supplier.routes'
+import purchaseOrderRoutes from './purchaseOrder.routes'
 import aiRoutes from './ai.routes'
 import { asyncHandler } from '../utils/asyncHandler'
 import { prisma } from '../config/prisma'
@@ -46,6 +48,8 @@ router.use('/notifications', notificationRoutes)
 router.use('/agent', agentRoutes)
 router.use('/workspace', workspaceRoutes)
 router.use('/payments', paymentRoutes)
+router.use('/suppliers', supplierRoutes)
+router.use('/purchase-orders', purchaseOrderRoutes)
 router.use('/ai', aiRoutes)
 
 export default router

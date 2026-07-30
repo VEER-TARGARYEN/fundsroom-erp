@@ -82,8 +82,10 @@ model User {
 
   stockLogs     StockLog[]
   challans      Challan[]      @relation("ChallanCreatedBy")
-  payments      Payment[]      @relation("PaymentCreatedBy")
-  googleAccount GoogleAccount?
+  payments       Payment[]       @relation("PaymentCreatedBy")
+  purchaseOrders PurchaseOrder[] @relation("PoCreatedBy")
+  goodsReceipts  GoodsReceipt[]  @relation("GrnReceivedBy")
+  googleAccount  GoogleAccount?
 
   @@index([role])
   @@map("users")
@@ -132,8 +134,10 @@ model Product {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  stockLogs    StockLog[]
-  challanItems ChallanItem[]
+  stockLogs        StockLog[]
+  challanItems     ChallanItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+  goodsReceiptItems  GoodsReceiptItem[]
 
   @@index([category])
   @@index([name])
@@ -302,4 +306,163 @@ model Payment {
   @@index([customerId])
   @@index([paidAt])
   @@map("payments")
+}
+
+/** Lifecycle of a purchase order. */
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+/**
+ * A supplier we buy stock from — the counterparty on a purchase order.
+ *
+ * Deliberately narrower than Customer: no sales pipeline status, no follow-up
+ * dates. `paymentTermsDays` is what an accounts team needs to age payables the
+ * way receivables are aged on the sales side.
+ */
+model Supplier {
+  id               String   @id @default(uuid()) @db.Uuid
+  name             String
+  contactPerson    String   @map("contact_person")
+  mobile           String
+  email            String?
+  gstin            String?  @db.VarChar(15)
+  /** Net payment terms in days; drives payables aging. */
+  paymentTermsDays Int      @default(30) @map("payment_terms_days")
+  isActive         Boolean  @default(true) @map("is_active")
+  notes            String?
+
+  addressLine1 String? @map("address_line1")
+  city         String?
+  state        String?
+  pincode      String? @db.VarChar(10)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  purchaseOrders PurchaseOrder[]
+
+  @@index([name])
+  @@index([isActive])
+  @@map("suppliers")
+}
+
+/**
+ * A purchase order raised on a supplier.
+ *
+ * `status` is stored rather than derived because DRAFT / SENT / CANCELLED are
+ * workflow states that quantities cannot express. The two states that ARE
+ * derivable — PARTIALLY_RECEIVED and RECEIVED — are transitioned inside the same
+ * locked transaction that records the goods receipt, so they cannot drift.
+ */
+model PurchaseOrder {
+  id           String              @id @default(uuid()) @db.Uuid
+  poNumber     String              @unique @map("po_number")
+  supplierId   String              @map("supplier_id") @db.Uuid
+  supplier     Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  status       PurchaseOrderStatus @default(DRAFT)
+  subtotal     Decimal             @default(0) @db.Decimal(14, 2)
+  taxAmount    Decimal             @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  totalAmount  Decimal             @default(0) @map("total_amount") @db.Decimal(14, 2)
+  /** When the supplier is expected to deliver; drives the overdue-PO view. */
+  expectedDate DateTime?           @map("expected_date") @db.Date
+  notes        String?
+  createdById  String              @map("created_by_id") @db.Uuid
+  createdBy    User                @relation("PoCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  sentAt       DateTime?           @map("sent_at")
+  closedAt     DateTime?           @map("closed_at")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  items    PurchaseOrderItem[]
+  receipts GoodsReceipt[]
+
+  @@index([supplierId])
+  @@index([status])
+  @@index([createdById])
+  @@index([createdAt])
+  @@index([expectedDate])
+  @@map("purchase_orders")
+}
+
+/**
+ * One ordered product on a purchase order.
+ *
+ * `receivedQuantity` is a denormalised running total of this line's goods
+ * receipts. It is a cache, never an independent source of truth: it is written
+ * ONLY inside the transaction that inserts the matching GoodsReceiptItem, under
+ * a FOR UPDATE lock on the parent PO. Deriving it instead would mean a GROUP BY
+ * over receipt items for every line of every PO in a list view — measurably
+ * worse on a 0.25 vCPU instance than the per-document aggregate the payments
+ * ledger needs. `GET /purchase-orders/reconcile` proves the cache matches.
+ */
+model PurchaseOrderItem {
+  id                  String        @id @default(uuid()) @db.Uuid
+  purchaseOrderId     String        @map("purchase_order_id") @db.Uuid
+  purchaseOrder       PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId           String        @map("product_id") @db.Uuid
+  product             Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  // Immutable snapshots — a later rename or repricing must not rewrite history.
+  productNameSnapshot String        @map("product_name_snapshot")
+  skuSnapshot         String        @map("sku_snapshot")
+  /** What we agreed to pay the supplier — not the product's sale price. */
+  unitCost            Decimal       @map("unit_cost") @db.Decimal(12, 2)
+  orderedQuantity     Int           @map("ordered_quantity")
+  receivedQuantity    Int           @default(0) @map("received_quantity")
+  lineTotal           Decimal       @map("line_total") @db.Decimal(14, 2)
+
+  receiptItems GoodsReceiptItem[]
+
+  @@unique([purchaseOrderId, productId])
+  @@index([purchaseOrderId])
+  @@index([productId])
+  @@map("purchase_order_items")
+}
+
+/**
+ * A physical delivery against a purchase order (GRN — goods received note).
+ *
+ * One PO can have many receipts, because suppliers deliver in parts. Each
+ * receipt is the event that actually moves stock: it is the only path in the
+ * application by which Product.stockQuantity increases through PURCHASE_IN.
+ */
+model GoodsReceipt {
+  id              String        @id @default(uuid()) @db.Uuid
+  receiptNumber   String        @unique @map("receipt_number")
+  purchaseOrderId String        @map("purchase_order_id") @db.Uuid
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  /** Supplier's own delivery-note / invoice reference, for reconciliation. */
+  supplierRef     String?       @map("supplier_ref")
+  notes           String?
+  receivedAt      DateTime      @map("received_at")
+  receivedById    String        @map("received_by_id") @db.Uuid
+  receivedBy      User          @relation("GrnReceivedBy", fields: [receivedById], references: [id], onDelete: Restrict)
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  items GoodsReceiptItem[]
+
+  @@index([purchaseOrderId])
+  @@index([receivedAt])
+  @@map("goods_receipts")
+}
+
+/** One product line within a goods receipt. */
+model GoodsReceiptItem {
+  id                  String            @id @default(uuid()) @db.Uuid
+  goodsReceiptId      String            @map("goods_receipt_id") @db.Uuid
+  goodsReceipt        GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  purchaseOrderItemId String            @map("purchase_order_item_id") @db.Uuid
+  purchaseOrderItem   PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Restrict)
+  productId           String            @map("product_id") @db.Uuid
+  product             Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantityReceived    Int               @map("quantity_received")
+
+  @@index([goodsReceiptId])
+  @@index([purchaseOrderItemId])
+  @@index([productId])
+  @@map("goods_receipt_items")
 }
