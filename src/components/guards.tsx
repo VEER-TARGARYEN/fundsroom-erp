@@ -17,12 +17,25 @@ export function FullScreenLoader() {
   )
 }
 
-/** Gate authenticated app routes. */
+/**
+ * Gate authenticated app routes.
+ *
+ * Landing on the app root while signed out shows the marketing page rather than
+ * the bare sign-in form — the same front door Render and GitHub present. Any
+ * deeper URL still goes to /login carrying `from`, so signing in returns the
+ * user to the page they actually asked for.
+ */
 export function RequireAuth() {
   const { status } = useAuth()
   const location = useLocation()
   if (status === 'loading') return <FullScreenLoader />
-  if (status === 'unauthenticated') return <Navigate to="/login" state={{ from: location }} replace />
+  if (status === 'unauthenticated') {
+    return location.pathname === '/' ? (
+      <Navigate to="/welcome" replace />
+    ) : (
+      <Navigate to="/login" state={{ from: location }} replace />
+    )
+  }
   return <Outlet />
 }
 

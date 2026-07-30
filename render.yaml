@@ -53,3 +53,20 @@ services:
         sync: false
       - key: APP_URL
         sync: false
+      # Google OAuth + Workspace. Without these, Google sign-in is hidden and
+      # the rest of the app is unaffected.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      # Comma-separated emails / @domains allowed to self-provision via Google.
+      # Unset means only pre-existing users may sign in (fails closed).
+      - key: GOOGLE_ALLOWED_EMAILS
+        sync: false
+      - key: GOOGLE_DEFAULT_ROLE
+        value: SALES
+      # Encrypts stored Google refresh tokens at rest (AES-256-GCM).
+      - key: TOKEN_ENC_KEY
+        generateValue: true

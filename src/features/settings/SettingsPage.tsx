@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { usePrefs, type NotificationPrefs } from '@/features/settings/prefs'
+import { GoogleWorkspacePanel } from './GoogleWorkspacePanel'
 import { cn } from '@/lib/utils'
 import type { Role } from '@/types/api'
 
@@ -149,6 +150,15 @@ export function SettingsPage() {
               />
             ))}
           </div>
+        </SectionCard>
+
+        {/* Google Workspace */}
+        <SectionCard
+          icon="cloud_sync"
+          title="Google Workspace"
+          subtitle="Export to Sheets, sync follow-ups to Calendar, send from Gmail."
+        >
+          <GoogleWorkspacePanel />
         </SectionCard>
 
         {/* Security */}

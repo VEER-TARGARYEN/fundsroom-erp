@@ -8,6 +8,7 @@ import dashboardRoutes from './dashboard.routes'
 import reportsRoutes from './reports.routes'
 import notificationRoutes from './notification.routes'
 import agentRoutes from './agent.routes'
+import workspaceRoutes from './workspace.routes'
 import aiRoutes from './ai.routes'
 import { asyncHandler } from '../utils/asyncHandler'
 import { prisma } from '../config/prisma'
@@ -42,6 +43,7 @@ router.use('/dashboard', dashboardRoutes)
 router.use('/reports', reportsRoutes)
 router.use('/notifications', notificationRoutes)
 router.use('/agent', agentRoutes)
+router.use('/workspace', workspaceRoutes)
 router.use('/ai', aiRoutes)
 
 export default router

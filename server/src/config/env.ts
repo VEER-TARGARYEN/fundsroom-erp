@@ -43,6 +43,26 @@ const EnvSchema = z.object({
   ALERT_EMAIL_FROM: z.string().default('Fundsroom ERP <onboarding@resend.dev>'),
   /** Public frontend URL, used to deep-link from emails. */
   APP_URL: z.string().url().optional(),
+
+  // ── Google OAuth + Workspace (all optional) ────────────────────────────────
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  /** Must match a redirect URI registered in the Google Cloud credentials. */
+  GOOGLE_REDIRECT_URI: z.string().url().optional(),
+  /**
+   * Who may sign in with Google. Comma-separated emails and/or @domains.
+   * Deliberately fails closed: with this unset, Google sign-in only works for
+   * people who already have an account, so a stranger's Google login can never
+   * provision itself into the ERP.
+   */
+  GOOGLE_ALLOWED_EMAILS: z.string().optional(),
+  /** Role granted to auto-provisioned Google users. Least privilege by default. */
+  GOOGLE_DEFAULT_ROLE: z.enum(['ADMIN', 'SALES', 'WAREHOUSE', 'ACCOUNTS']).default('SALES'),
+  /**
+   * 32-byte key (base64 or hex) encrypting stored Google refresh tokens.
+   * Without it, Workspace connections are refused rather than stored in clear.
+   */
+  TOKEN_ENC_KEY: z.string().optional(),
 })
 
 const parsed = EnvSchema.safeParse(process.env)

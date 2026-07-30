@@ -80,8 +80,9 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  stockLogs StockLog[]
-  challans  Challan[]  @relation("ChallanCreatedBy")
+  stockLogs     StockLog[]
+  challans      Challan[]      @relation("ChallanCreatedBy")
+  googleAccount GoogleAccount?
 
   @@index([role])
   @@map("users")
@@ -226,4 +227,32 @@ model Notification {
   @@index([readAt])
   @@index([createdAt])
   @@map("notifications")
+}
+
+/**
+ * A user's linked Google account and Workspace grant.
+ *
+ * Tokens are stored encrypted (see src/utils/crypto.ts) because the requested
+ * scopes allow reading/writing Sheets and Calendar and sending mail as the user.
+ * `refreshToken` is nullable: Google only returns one on the first consent, so
+ * an existing value must be preserved when re-consenting.
+ */
+model GoogleAccount {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @unique @map("user_id") @db.Uuid
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /** Google's stable subject id — the identity to match on, not the email. */
+  googleSub    String    @unique @map("google_sub")
+  email        String
+  name         String?
+  picture      String?
+  accessToken  String?   @map("access_token")
+  refreshToken String?   @map("refresh_token")
+  expiresAt    DateTime? @map("expires_at")
+  /** Space-separated scopes actually granted, which may be fewer than asked. */
+  scope        String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("google_accounts")
 }

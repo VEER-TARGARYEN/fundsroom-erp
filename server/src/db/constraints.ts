@@ -34,8 +34,29 @@ export async function ensureDatabaseConstraints(): Promise<void> {
   )
 
   await ensureNotificationsTable()
+  await ensureGoogleAccountsTable()
 
   logger.info('Database constraints & sequences ensured')
+}
+
+/** Linked Google identities + encrypted Workspace tokens. Idempotent. */
+async function ensureGoogleAccountsTable(): Promise<void> {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "google_accounts" (
+      "id"            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id"       UUID NOT NULL UNIQUE REFERENCES "users"("id") ON DELETE CASCADE,
+      "google_sub"    TEXT NOT NULL UNIQUE,
+      "email"         TEXT NOT NULL,
+      "name"          TEXT,
+      "picture"       TEXT,
+      "access_token"  TEXT,
+      "refresh_token" TEXT,
+      "expires_at"    TIMESTAMP(3),
+      "scope"         TEXT,
+      "created_at"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updated_at"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `)
 }
 
 /**

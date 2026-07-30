@@ -1,8 +1,8 @@
-import { lazy } from 'react'
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { AppShell } from '@/components/layout/AppShell'
-import { RequireAuth, RequireRole, NotFound } from '@/components/guards'
+import { RequireAuth, RequireRole, NotFound, FullScreenLoader } from '@/components/guards'
 
 /**
  * Feature pages are split into their own chunks so the first paint only ships
@@ -31,10 +31,17 @@ const NotificationsPage = lazyPage(
   'NotificationsPage',
 )
 const SettingsPage = lazyPage(() => import('@/features/settings/SettingsPage'), 'SettingsPage')
+const LandingPage = lazyPage(() => import('@/features/marketing/LandingPage'), 'LandingPage')
 
 export default function App() {
   return (
+    // Outer boundary for lazy routes rendered outside AppShell (which has its
+    // own Suspense around <Outlet />) — the landing page needs one too.
+    <Suspense fallback={<FullScreenLoader />}>
     <Routes>
+      {/* Public marketing page. Lives at /welcome rather than / so the
+          dashboard keeps the root path for signed-in users. */}
+      <Route path="/welcome" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
 
       <Route element={<RequireAuth />}>
@@ -95,5 +102,6 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   )
 }

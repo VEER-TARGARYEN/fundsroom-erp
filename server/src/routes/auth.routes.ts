@@ -1,5 +1,11 @@
 import { Router } from 'express'
 import { login, refresh, logout, me } from '../controllers/auth.controller'
+import {
+  googleStart,
+  googleCallback,
+  googleStatus,
+  googleDisconnect,
+} from '../controllers/google.controller'
 import { authenticate } from '../middleware/auth'
 import { validate } from '../middleware/validate'
 import { authLimiter } from '../middleware/rateLimit'
@@ -61,5 +67,56 @@ router.post('/logout', logout)
  *       401: { description: Unauthenticated }
  */
 router.get('/me', authenticate, me)
+
+// ── Google OAuth ────────────────────────────────────────────────────────────
+// The start/callback pair are top-level browser navigations, so they are GETs
+// without bearer auth; CSRF is handled by the signed `state` parameter.
+
+/**
+ * @openapi
+ * /auth/google:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Redirect to Google for sign-in
+ *     security: []
+ *     responses:
+ *       302: { description: Redirect to Google consent }
+ */
+router.get('/google', authLimiter, googleStart)
+
+
+/**
+ * @openapi
+ * /auth/google/callback:
+ *   get:
+ *     tags: [Auth]
+ *     summary: OAuth callback — sets the refresh cookie and redirects to the app
+ *     security: []
+ *     responses:
+ *       302: { description: Redirect back to the frontend }
+ */
+router.get('/google/callback', authLimiter, googleCallback)
+
+/**
+ * @openapi
+ * /auth/google/status:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Whether Google sign-in is available and currently linked
+ *     responses:
+ *       200: { description: Link status and granted scopes }
+ */
+router.get('/google/status', authenticate, googleStatus)
+
+/**
+ * @openapi
+ * /auth/google/disconnect:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Revoke the Google grant and unlink
+ *     responses:
+ *       200: { description: Disconnected }
+ */
+router.post('/google/disconnect', authenticate, googleDisconnect)
 
 export default router
