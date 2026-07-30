@@ -32,6 +32,10 @@ const NotificationsPage = lazyPage(
 )
 const SettingsPage = lazyPage(() => import('@/features/settings/SettingsPage'), 'SettingsPage')
 const LandingPage = lazyPage(() => import('@/features/marketing/LandingPage'), 'LandingPage')
+const ChallanPrintPage = lazyPage(
+  () => import('@/features/challans/ChallanPrintPage'),
+  'ChallanPrintPage',
+)
 
 export default function App() {
   return (
@@ -45,6 +49,17 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
 
       <Route element={<RequireAuth />}>
+        {/* Print view sits inside the auth guard but outside AppShell — a
+            document should render on its own, with no chrome to hide. */}
+        <Route
+          path="challans/:id/print"
+          element={
+            <RequireRole roles={['ADMIN', 'SALES', 'ACCOUNTS']}>
+              <ChallanPrintPage />
+            </RequireRole>
+          }
+        />
+
         <Route element={<AppShell />}>
           <Route index element={<DashboardPage />} />
 

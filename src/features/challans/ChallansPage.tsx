@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -146,6 +146,15 @@ export function ChallansPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
+                        {/* Opens the print view with the dialog already up, so
+                            "invoice" is one click rather than two. */}
+                        <Link
+                          to={`/challans/${c.id}/print?auto=1`}
+                          title={c.status === 'CONFIRMED' ? 'Print tax invoice' : 'Print delivery challan'}
+                          className="rounded-lg p-1.5 text-on-surface-variant hover:bg-surface-container-highest hover:text-secondary"
+                        >
+                          <Icon name="print" size={18} />
+                        </Link>
                         {c.status === 'DRAFT' && (
                           <button onClick={() => setPending({ kind: 'confirm', id: c.id, label: c.challanNumber })} title="Confirm" className="rounded-lg p-1.5 text-on-surface-variant hover:bg-success/10 hover:text-success">
                             <Icon name="check_circle" size={18} />
