@@ -50,12 +50,17 @@ function BarList({
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-surface-container-highest">
             {/* Grows from zero on mount and staggers down the list, so the
-                ranking reads as it draws. */}
+                ranking reads as it draws.
+
+                Animates scaleX, not width: width is a layout property, so it
+                forced a reflow on every frame of every bar. A transform is
+                composited on the GPU and costs no layout at all. */}
             <m.div
-              className="h-full rounded-full bg-secondary"
-              initial={{ width: 0 }}
-              animate={{ width: `${(values[i]! / max) * 100}%` }}
-              transition={{ duration: 0.7, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] }}
+              className="h-full origin-left rounded-full bg-secondary"
+              style={{ width: `${(values[i]! / max) * 100}%` }}
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: 0.55, delay: i * 0.04, ease: [0.22, 1, 0.36, 1] }}
             />
           </div>
         </div>

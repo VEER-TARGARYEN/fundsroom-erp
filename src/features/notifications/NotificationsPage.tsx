@@ -166,7 +166,7 @@ export function NotificationsPage() {
             className="divide-y divide-outline-variant/10"
             initial="hidden"
             animate="show"
-            variants={{ hidden: {}, show: { transition: { staggerChildren: 0.03 } } }}
+            variants={{ hidden: {}, show: { transition: { staggerChildren: 0.022 } } }}
           >
             {items.map((n) => {
               const isRead = n.readAt !== null
@@ -176,7 +176,7 @@ export function NotificationsPage() {
                   key={n.id}
                   variants={{
                     hidden: { opacity: 0, y: 8 },
-                    show: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } },
+                    show: { opacity: 1, y: 0, transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] } },
                   }}
                   className={cn(
                     'flex items-start gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-surface-container-high',

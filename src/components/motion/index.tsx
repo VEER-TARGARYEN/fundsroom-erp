@@ -10,10 +10,16 @@ import type { ReactNode } from 'react'
  * just arrive without travel.
  */
 
-/** Springs tuned to feel responsive rather than bouncy. */
-export const SPRING: Transition = { type: 'spring', stiffness: 420, damping: 34, mass: 0.7 }
-export const SOFT_SPRING: Transition = { type: 'spring', stiffness: 260, damping: 30 }
-export const EASE: Transition = { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+/**
+ * Springs tuned to feel responsive rather than bouncy, and short enough that
+ * the UI never feels like it's waiting on an animation. Everything below
+ * animates only `opacity` and `transform`, which the compositor can handle
+ * without touching layout — the single biggest factor in whether motion feels
+ * smooth on a low-powered device.
+ */
+export const SPRING: Transition = { type: 'spring', stiffness: 520, damping: 32, mass: 0.55 }
+export const SOFT_SPRING: Transition = { type: 'spring', stiffness: 340, damping: 30, mass: 0.7 }
+export const EASE: Transition = { duration: 0.17, ease: [0.22, 1, 0.36, 1] }
 
 /** Fade + small rise. The workhorse for cards, panels and page sections. */
 export function FadeIn({
@@ -48,7 +54,7 @@ export function FadeIn({
 export function Stagger({
   children,
   className,
-  gap = 0.035,
+  gap = 0.028,
 }: {
   children: ReactNode
   className?: string
@@ -67,7 +73,7 @@ export function Stagger({
 }
 
 export const staggerItemVariants: Variants = {
-  hidden: { opacity: 0, y: 10 },
+  hidden: { opacity: 0, y: 8 },
   show: { opacity: 1, y: 0, transition: EASE },
 }
 
@@ -78,7 +84,7 @@ export function StaggerItem({ children, className }: { children: ReactNode; clas
       className={className}
       variants={
         reduce
-          ? { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.15 } } }
+          ? { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.12 } } }
           : staggerItemVariants
       }
     >

@@ -196,7 +196,7 @@ export function AppShell() {
                 initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
-                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
               >
                 <Outlet />
               </m.div>
