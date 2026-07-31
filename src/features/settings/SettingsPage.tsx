@@ -60,14 +60,16 @@ function Toggle({
       >
         <span
           className={cn(
-            'absolute top-0.5 h-5 w-5 rounded-full shadow transition-transform',
-            // White reads fine on the dark OFF track (~12:1) but nearly
-            // vanishes on the light indigo ON track (~1.7:1, under the
-            // WCAG 3:1 minimum for UI controls) — on-secondary is the
-            // palette's designated foreground for a secondary background
-            // and holds ~7.7:1 there, so the thumb stays visible in both
-            // states without introducing a color outside the token system.
-            checked ? 'translate-x-5 bg-on-secondary' : 'translate-x-0.5 bg-white',
+            // `left-0.5` anchors the thumb to the track's left edge — without
+            // an explicit `left`, an absolutely positioned element sits at its
+            // *static* position, which a <button> centers, so `translate-x-5`
+            // pushed the thumb past the track's right edge in every theme.
+            'absolute left-0.5 top-0.5 h-5 w-5 rounded-full shadow transition-transform',
+            // Thumb colors come from tokens so every theme keeps ≥3:1 against
+            // its own track: on-secondary vs the secondary ON track, and
+            // on-surface-variant vs the surface-container-highest OFF track
+            // (a hardcoded white thumb vanished on Meadow's light gray track).
+            checked ? 'translate-x-5 bg-on-secondary' : 'translate-x-0 bg-on-surface-variant',
           )}
         />
       </button>

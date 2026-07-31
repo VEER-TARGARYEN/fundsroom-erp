@@ -1,5 +1,31 @@
 import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwind-merge'
+import { extendTailwindMerge } from 'tailwind-merge'
+
+/**
+ * tailwind-merge must be told about the design system's custom font-size
+ * classes (text-body-sm, text-title-md, …). Without this it cannot tell a
+ * custom `text-*` size from a custom `text-*` color, treats them as the SAME
+ * group, and silently drops whichever comes first — which stripped
+ * `text-on-primary` from every Button (the size class in SIZES came later),
+ * leaving button text to inherit the page color: near-invisible pale text on
+ * the white Nexus primary, dark-green-on-green in Meadow.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [
+        'text-display-lg',
+        'text-display-sm',
+        'text-headline-sm',
+        'text-title-md',
+        'text-body-md',
+        'text-body-sm',
+        'text-label-caps',
+        'text-data-mono',
+      ],
+    },
+  },
+})
 
 /**
  * Merge Tailwind class names safely (shadcn/ui convention).
