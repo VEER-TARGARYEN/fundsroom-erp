@@ -53,13 +53,20 @@ function Toggle({
         onClick={() => onChange(!checked)}
         className={cn(
           'relative h-6 w-11 shrink-0 rounded-full transition-colors',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary/40',
           checked ? 'bg-secondary' : 'bg-surface-container-highest',
         )}
       >
         <span
           className={cn(
-            'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-            checked ? 'translate-x-5' : 'translate-x-0.5',
+            'absolute top-0.5 h-5 w-5 rounded-full shadow transition-transform',
+            // White reads fine on the dark OFF track (~12:1) but nearly
+            // vanishes on the light indigo ON track (~1.7:1, under the
+            // WCAG 3:1 minimum for UI controls) — on-secondary is the
+            // palette's designated foreground for a secondary background
+            // and holds ~7.7:1 there, so the thumb stays visible in both
+            // states without introducing a color outside the token system.
+            checked ? 'translate-x-5 bg-on-secondary' : 'translate-x-0.5 bg-white',
           )}
         />
       </button>
