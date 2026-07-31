@@ -4,8 +4,25 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
     <title>Nexus Core — Fundsroom ERP</title>
+    <script>
+      // Applied before React mounts (and before first paint) so switching
+      // themes and reloading never flashes the previous theme. Kept as a
+      // small inline script rather than a module import so it runs
+      // synchronously, ahead of any JS bundle fetch. The theme id list is
+      // duplicated in src/theme.ts — both must stay in sync when a theme is
+      // added or removed.
+      (function () {
+        try {
+          var VALID = ['nexus', 'meadow', 'abyss', 'ember']
+          var saved = localStorage.getItem('fundsroom.theme.v1')
+          var theme = VALID.indexOf(saved) !== -1 ? saved : 'nexus'
+          document.documentElement.dataset.theme = theme
+        } catch (e) {
+          document.documentElement.dataset.theme = 'nexus'
+        }
+      })()
+    </script>
 
     <!-- Aetheric Enterprise typefaces + Material Symbols icons (Stitch design) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />

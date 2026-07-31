@@ -1,0 +1,161 @@
+/**
+ * Theme variable blocks — one `[data-theme="…"]` selector per theme, each
+ * defining the full Aetheric Enterprise token set as space-separated RGB
+ * triples (required by Tailwind's `rgb(var(--x) / <alpha-value>)` pattern —
+ * see tailwind.config.js). Applying a theme is just setting
+ * `document.documentElement.dataset.theme`; no rebuild needed.
+ *
+ * Values were generated and every text/background pairing the app actually
+ * renders was checked against WCAG (4.5:1 body text, 3:1 UI controls) before
+ * being committed here — see the color math and the full check matrix in the
+ * PR description. `nexus` is the original, unchanged app palette.
+ */
+
+:root,
+[data-theme='nexus'] {
+  color-scheme: dark;
+  --color-background: 16 20 23;
+  --color-surface: 16 20 23;
+  --color-surface-dim: 16 20 23;
+  --color-surface-bright: 54 57 62;
+  --color-surface-container-lowest: 11 15 18;
+  --color-surface-container-low: 24 28 32;
+  --color-surface-container: 28 32 36;
+  --color-surface-container-high: 39 42 46;
+  --color-surface-container-highest: 50 53 57;
+  --color-on-background: 224 226 232;
+  --color-on-surface: 224 226 232;
+  --color-on-surface-variant: 196 199 200;
+  --color-outline: 142 145 146;
+  --color-outline-variant: 68 71 72;
+  --color-primary: 255 255 255;
+  --color-on-primary: 47 49 49;
+  --color-primary-container: 226 226 226;
+  --color-primary-fixed-dim: 198 198 199;
+  --color-secondary: 192 193 255;
+  --color-on-secondary: 16 0 169;
+  --color-secondary-container: 49 49 192;
+  --color-on-secondary-container: 176 178 255;
+  --color-secondary-fixed: 225 224 255;
+  --color-success: 94 201 138;
+  --color-success-container: 15 61 41;
+  --color-warning: 224 178 82;
+  --color-warning-container: 64 47 16;
+  --color-error: 255 180 171;
+  --color-on-error: 105 0 5;
+  --color-error-container: 147 0 10;
+  --color-on-error-container: 255 218 214;
+}
+
+/* Meadow — light theme. Primary #336600 (forest green), container tint
+   #CCFF99 used verbatim, AI/secondary accent #9900CC, neutrals built around
+   the given #CCCCCC and a warm #FFFFCC undertone. */
+[data-theme='meadow'] {
+  color-scheme: light;
+  --color-background: 252 252 248;
+  --color-surface: 252 252 248;
+  --color-surface-dim: 248 248 241;
+  --color-surface-bright: 255 255 255;
+  --color-surface-container-lowest: 255 255 255;
+  --color-surface-container-low: 246 246 238;
+  --color-surface-container: 240 240 230;
+  --color-surface-container-high: 222 216 216;
+  --color-surface-container-highest: 204 204 204;
+  --color-on-background: 36 57 14;
+  --color-on-surface: 36 57 14;
+  --color-on-surface-variant: 82 114 49;
+  --color-outline: 117 141 94;
+  --color-outline-variant: 204 204 204;
+  --color-primary: 51 102 0;
+  --color-on-primary: 255 255 255;
+  --color-primary-container: 204 255 153;
+  --color-primary-fixed-dim: 61 122 0;
+  --color-secondary: 153 0 204;
+  --color-on-secondary: 255 255 255;
+  --color-secondary-container: 240 223 246;
+  --color-on-secondary-container: 92 0 122;
+  --color-secondary-fixed: 255 255 204;
+  --color-success: 77 119 34;
+  --color-success-container: 230 245 214;
+  --color-warning: 122 91 0;
+  --color-warning-container: 251 236 196;
+  --color-error: 161 41 31;
+  --color-on-error: 255 255 255;
+  --color-error-container: 251 220 216;
+  --color-on-error-container: 92 20 13;
+}
+
+/* Abyss — dark theme. Primary #3399CC (sky blue), secondary/AI accent
+   #00FFCC with #006666 used verbatim as its container, surfaces carrying a
+   faint navy undertone from #000066. */
+[data-theme='abyss'] {
+  color-scheme: dark;
+  --color-background: 15 15 31;
+  --color-surface: 15 15 31;
+  --color-surface-dim: 15 15 31;
+  --color-surface-bright: 49 49 73;
+  --color-surface-container-lowest: 9 9 21;
+  --color-surface-container-low: 21 21 40;
+  --color-surface-container: 27 27 45;
+  --color-surface-container-high: 35 35 52;
+  --color-surface-container-highest: 45 45 62;
+  --color-on-background: 226 231 233;
+  --color-on-surface: 226 231 233;
+  --color-on-surface-variant: 192 201 206;
+  --color-outline: 135 152 161;
+  --color-outline-variant: 57 57 86;
+  --color-primary: 51 153 204;
+  --color-on-primary: 14 14 57;
+  --color-primary-container: 215 227 234;
+  --color-primary-fixed-dim: 169 209 229;
+  --color-secondary: 0 255 204;
+  --color-on-secondary: 11 61 61;
+  --color-secondary-container: 0 102 102;
+  --color-on-secondary-container: 190 244 233;
+  --color-secondary-fixed: 206 243 235;
+  --color-success: 107 209 150;
+  --color-success-container: 41 59 22;
+  --color-warning: 224 178 82;
+  --color-warning-container: 59 46 22;
+  --color-error: 255 180 171;
+  --color-on-error: 105 0 5;
+  --color-error-container: 147 0 10;
+  --color-on-error-container: 255 218 214;
+}
+
+/* Ember — dark theme. Primary #9900CC (violet), secondary accent #CC3333
+   (brick red) used verbatim as its container — a bolder, jewel-toned pair. */
+[data-theme='ember'] {
+  color-scheme: dark;
+  --color-background: 28 20 31;
+  --color-surface: 28 20 31;
+  --color-surface-dim: 28 20 31;
+  --color-surface-bright: 68 55 73;
+  --color-surface-container-lowest: 20 13 22;
+  --color-surface-container-low: 36 27 40;
+  --color-surface-container: 42 32 45;
+  --color-surface-container-high: 49 39 52;
+  --color-surface-container-highest: 59 50 62;
+  --color-on-background: 233 230 234;
+  --color-on-surface: 233 230 234;
+  --color-on-surface-variant: 204 197 206;
+  --color-outline: 153 137 159;
+  --color-outline-variant: 79 64 84;
+  --color-primary: 220 142 246;
+  --color-on-primary: 50 15 61;
+  --color-primary-container: 153 0 204;
+  --color-primary-fixed-dim: 207 90 246;
+  --color-secondary: 223 155 155;
+  --color-on-secondary: 65 16 16;
+  --color-secondary-container: 204 51 51;
+  --color-on-secondary-container: 247 243 243;
+  --color-secondary-fixed: 234 215 215;
+  --color-success: 107 209 150;
+  --color-success-container: 41 59 22;
+  --color-warning: 224 178 82;
+  --color-warning-container: 59 46 22;
+  --color-error: 255 180 171;
+  --color-on-error: 105 0 5;
+  --color-error-container: 147 0 10;
+  --color-on-error-container: 255 218 214;
+}

@@ -1,12 +1,9 @@
+@import './theme.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  :root {
-    color-scheme: dark;
-  }
-
   html,
   body,
   #root {
@@ -47,11 +44,12 @@
     display: none;
   }
 
-  /* Subtle glow behind AI-generated surfaces */
+  /* Subtle glow behind AI-generated surfaces. Was hardcoded to the Nexus
+     indigo regardless of theme — now tracks the active theme's secondary. */
   .ai-glow {
     background-image: radial-gradient(
       120% 80% at 50% 0%,
-      rgb(49 49 192 / 0.08),
+      rgb(var(--color-secondary-container) / 0.08),
       transparent 70%
     );
   }

@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge'
 import { usePrefs, type NotificationPrefs } from '@/features/settings/prefs'
 import { GoogleWorkspacePanel } from './GoogleWorkspacePanel'
 import { cn } from '@/lib/utils'
+import { useTheme, THEMES } from '@/theme'
 import type { Role } from '@/types/api'
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -74,6 +75,52 @@ function Toggle({
   )
 }
 
+/**
+ * Each swatch previews its OWN theme's colors regardless of which theme is
+ * currently active, so inline styles are the correct tool here — the whole
+ * point is to show a palette the page isn't rendering in right now.
+ */
+function ThemeSwatch({
+  meta,
+  selected,
+  onSelect,
+}: {
+  meta: (typeof THEMES)[number]
+  selected: boolean
+  onSelect: () => void
+}) {
+  const { background, surface, primary, secondary } = meta.swatch
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cn(
+        'group relative flex flex-col overflow-hidden rounded-xl border text-left transition-all',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary/40',
+        selected
+          ? 'border-secondary ring-1 ring-secondary'
+          : 'border-outline-variant/20 hover:border-outline-variant/40',
+      )}
+    >
+      <div className="h-16 w-full" style={{ background }}>
+        <div className="flex h-full items-end gap-1.5 p-2.5">
+          <span className="h-5 w-5 rounded-full" style={{ background: primary }} />
+          <span className="h-5 w-5 rounded-full" style={{ background: secondary }} />
+          <span className="ml-auto h-8 flex-1 rounded-md" style={{ background: surface }} />
+        </div>
+      </div>
+      <div className="bg-surface-container-low p-3">
+        <div className="flex items-center gap-1.5">
+          <p className="text-body-sm font-medium text-on-surface">{meta.label}</p>
+          {selected && <Icon name="check_circle" size={15} className="text-secondary" />}
+        </div>
+        <p className="mt-0.5 text-body-sm text-on-surface-variant">{meta.description}</p>
+      </div>
+    </button>
+  )
+}
+
 function SectionCard({
   icon,
   title,
@@ -111,6 +158,7 @@ export function SettingsPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [prefs, updatePrefs] = usePrefs()
+  const [theme, setTheme] = useTheme()
   const [signingOut, setSigningOut] = useState(false)
 
   async function handleSignOut() {
@@ -123,7 +171,20 @@ export function SettingsPage() {
     <>
       <PageHeader title="Settings" subtitle="Profile, notification preferences, security and workspace." />
 
-      <div className="grid grid-cols-1 gap-gutter lg:grid-cols-2">
+      {/* Appearance */}
+      <SectionCard
+        icon="palette"
+        title="Appearance"
+        subtitle="Pick a theme. Applies instantly and everywhere, no reload needed."
+      >
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {THEMES.map((t) => (
+            <ThemeSwatch key={t.id} meta={t} selected={theme === t.id} onSelect={() => setTheme(t.id)} />
+          ))}
+        </div>
+      </SectionCard>
+
+      <div className="mt-6 grid grid-cols-1 gap-gutter lg:grid-cols-2">
         {/* Profile */}
         <SectionCard icon="account_circle" title="Profile" subtitle="Your account identity.">
           <div className="flex items-center gap-4">

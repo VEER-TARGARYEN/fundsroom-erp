@@ -1,48 +1,40 @@
 /** @type {import('tailwindcss').Config} */
 // Aetheric Enterprise design system (ported from the Stitch export).
-// "Quiet luxury": monochromatic charcoal surfaces + Electric Indigo reserved
-// for AI/focus, Geist + JetBrains Mono, Material-You semantic tokens.
+// "Quiet luxury": monochromatic surfaces + one reserved accent, Geist +
+// JetBrains Mono, Material-You semantic tokens.
+//
+// Every color below resolves through a CSS custom property rather than a
+// literal hex value, so a theme can be swapped at runtime by changing which
+// `--color-*` values are in scope (see src/theme.css) — nothing here needs a
+// rebuild. `withOpacity` preserves Tailwind's `/NN` opacity-modifier syntax
+// (e.g. `bg-error/15`, used throughout the app for translucent chip fills),
+// which breaks if a color is given as a plain `var(--x)` string instead of
+// this `rgb(var(--x) / <alpha-value>)` function form.
+function withOpacity(variable) {
+  return `rgb(var(${variable}) / <alpha-value>)`
+}
+
+const TOKENS = [
+  'background', 'surface', 'surface-dim', 'surface-bright',
+  'surface-container-lowest', 'surface-container-low', 'surface-container',
+  'surface-container-high', 'surface-container-highest',
+  'on-background', 'on-surface', 'on-surface-variant',
+  'outline', 'outline-variant',
+  'primary', 'on-primary', 'primary-container', 'primary-fixed-dim',
+  'secondary', 'on-secondary', 'secondary-container', 'on-secondary-container', 'secondary-fixed',
+  'success', 'success-container',
+  'warning', 'warning-container',
+  'error', 'on-error', 'error-container', 'on-error-container',
+]
+
+const colors = Object.fromEntries(TOKENS.map((t) => [t, withOpacity(`--color-${t}`)]))
+
 export default {
   darkMode: 'class',
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
-      colors: {
-        background: '#101417',
-        surface: '#101417',
-        'surface-dim': '#101417',
-        'surface-bright': '#36393e',
-        'surface-container-lowest': '#0b0f12',
-        'surface-container-low': '#181c20',
-        'surface-container': '#1c2024',
-        'surface-container-high': '#272a2e',
-        'surface-container-highest': '#323539',
-        'on-background': '#e0e2e8',
-        'on-surface': '#e0e2e8',
-        'on-surface-variant': '#c4c7c8',
-        outline: '#8e9192',
-        'outline-variant': '#444748',
-        // Primary = high-contrast white (dark theme).
-        primary: '#ffffff',
-        'on-primary': '#2f3131',
-        'primary-container': '#e2e2e2',
-        'primary-fixed-dim': '#c6c6c7',
-        // Secondary = Electric Indigo — reserved for AI, focus, primary status.
-        secondary: '#c0c1ff',
-        'on-secondary': '#1000a9',
-        'secondary-container': '#3131c0',
-        'on-secondary-container': '#b0b2ff',
-        'secondary-fixed': '#e1e0ff',
-        // Status (desaturated to keep the "quiet" aesthetic).
-        success: '#5ec98a',
-        'success-container': '#0f3d29',
-        warning: '#e0b252',
-        'warning-container': '#402f10',
-        error: '#ffb4ab',
-        'on-error': '#690005',
-        'error-container': '#93000a',
-        'on-error-container': '#ffdad6',
-      },
+      colors,
       fontFamily: {
         sans: ['Geist', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
@@ -65,7 +57,9 @@ export default {
       },
       boxShadow: {
         card: '0 1px 2px 0 rgb(0 0 0 / 0.20)',
-        glow: '0 0 0 1px rgb(49 49 192 / 0.30), 0 8px 24px -8px rgb(49 49 192 / 0.35)',
+        // Was hardcoded to the Nexus indigo (49 49 192) regardless of theme —
+        // now tracks whichever theme's secondary-container is active.
+        glow: '0 0 0 1px rgb(var(--color-secondary-container) / 0.30), 0 8px 24px -8px rgb(var(--color-secondary-container) / 0.35)',
       },
       backdropBlur: { xs: '2px' },
       keyframes: {
